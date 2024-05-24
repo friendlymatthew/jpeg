@@ -23,7 +23,6 @@ pub(crate) fn rgb_to_grayscale(src: &[u8], dst: &mut [u8], num: usize) {
     let g_factor = f32x64::splat(0.58661);
     let b_factor = f32x64::splat(0.11448);
 
-
     let mut i = 0;
     while i < num {
         let end = (i + simd_size).min(num);

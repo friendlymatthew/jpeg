@@ -1,6 +1,5 @@
-# SIMD Dog
-
-SIMD Dog is a grayscale converter that uses SIMD operations to extract brightness data from every pixel's RGB value.
+# simd-jpeg
+simd-jpeg implements .jpeg algorithms in simd.
 
 <br />
 
