@@ -1,3 +1,4 @@
+use crate::huffman_table::{CodeFreq, HuffmanTree};
 use crate::jfif_reader::MarLen;
 use anyhow::{anyhow, Result};
 use std::iter;
@@ -45,9 +46,11 @@ impl JpegDecoder {
     }
 
     pub fn decode_huffman_tables(&self) -> Result<()> {
+        debug_assert_eq!(self.huffman_marlen.len(), 4);
+
         let (ht_types, ht_numbers) = self.decode_huffman_information()?;
 
-        for marlen in &self.huffman_marlen {
+        for (idx, marlen) in self.huffman_marlen.iter().enumerate() {
             let MarLen { offset, length } = marlen;
 
             let mut current_offset = offset + HUFFMAN_INFORMATION_BYTES;
@@ -71,11 +74,11 @@ impl JpegDecoder {
 
             let code_freq = self.buffer[current_offset..current_offset + code_len]
                 .iter()
-                .zip(flat_lengths.iter());
+                .zip(flat_lengths.iter())
+                .map(|(&code, &freq)| CodeFreq { code, freq })
+                .collect::<Vec<CodeFreq>>();
 
-            code_freq.for_each(|(code, freq)| {
-                println!("Code: {:?}, frequency: {:?}", code, freq);
-            })
+            let tree = HuffmanTree::from(ht_types[idx], ht_numbers[idx] as usize, code_freq);
         }
 
         Ok(())
