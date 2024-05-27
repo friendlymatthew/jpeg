@@ -1,9 +1,11 @@
+use crate::component::{Component, ComponentType, FrameData, ScanData};
 use crate::huffman_tree::{CodeFreq, HuffmanTree};
 use crate::jfif_reader::{MarLen, MARKER_BYTES};
+use crate::quant_tables::{Precision, QuantTable};
 use anyhow::{anyhow, Result};
 use std::iter;
+use std::iter::Scan;
 use std::simd::prelude::*;
-use crate::quant_tables::QuantTable;
 
 const INFORMATION_BYTES: usize = 1;
 const HUFFMAN_SYM_BYTES: usize = 16;
@@ -14,22 +16,32 @@ pub struct JpegDecoder {
     buffer: Vec<u8>,
     huffman_marlen: Vec<MarLen>,
     qt_marlen: Vec<MarLen>,
+    sos_marlen: MarLen,
+    sof_marlen: MarLen,
 }
 
 impl JpegDecoder {
-    pub fn new(buffer: &[u8], huffman_marlen: Vec<MarLen>, qt_marlen: Vec<MarLen>) -> Self {
+    pub fn new(
+        buffer: &[u8],
+        huffman_marlen: Vec<MarLen>,
+        qt_marlen: Vec<MarLen>,
+        sos_marlen: MarLen,
+        sof_marlen: MarLen,
+    ) -> Self {
         JpegDecoder {
             buffer: buffer.to_vec(),
             huffman_marlen,
             qt_marlen,
+            sos_marlen,
+            sof_marlen,
         }
     }
 
     pub fn decode(&self) -> Result<()> {
         let huffman_trees = self.decode_huffman_trees()?;
         let quant_tables = self.decode_quant_table()?;
-
-
+        let start_of_frame = self.decode_start_of_frame()?;
+        let start_of_scan = self.decode_start_of_scan()?;
 
         Ok(())
     }
@@ -79,7 +91,7 @@ impl JpegDecoder {
         Ok((qt_ids, qt_precisions))
     }
 
-    pub fn decode_quant_table(&self) -> Result<Vec<QuantTable>> {
+    fn decode_quant_table(&self) -> Result<Vec<QuantTable>> {
         debug_assert_eq!(self.qt_marlen.len(), 2);
 
         let mut tables = vec![];
@@ -103,7 +115,7 @@ impl JpegDecoder {
         Ok(tables)
     }
 
-    pub fn decode_huffman_trees(&self) -> Result<Vec<HuffmanTree>> {
+    fn decode_huffman_trees(&self) -> Result<Vec<HuffmanTree>> {
         debug_assert_eq!(self.huffman_marlen.len(), 4);
 
         let mut trees = vec![];
@@ -144,6 +156,135 @@ impl JpegDecoder {
 
         Ok(trees)
     }
+
+    fn decode_start_of_scan(&self) -> Result<Vec<ScanData>> {
+        let MarLen { offset, length } = self.sos_marlen;
+        let mut current_offset = offset;
+
+        let num_components = self.buffer[current_offset];
+        current_offset += 1;
+
+        debug_assert_eq!(num_components, 3, "as of now assume only dealing with color components is 3");
+
+        let mut scan_data = vec![];
+
+        let component_ids = Simd::from([
+            self.buffer[current_offset],
+            self.buffer[current_offset + 2],
+            self.buffer[current_offset + (2 * 2)],
+            0,
+        ]);
+
+        current_offset += 1;
+
+        let huffman_table_ids = Simd::from([
+            self.buffer[current_offset],
+            self.buffer[current_offset + 2],
+            self.buffer[current_offset + (2 * 2)],
+            0,
+        ]);
+
+        let dc_huffman_table_ids  = huffman_table_ids >> 4;
+        let ac_huffman_table_ids = huffman_table_ids & Simd::splat(0b1111);
+
+        for i in 0..3{
+            scan_data.push(ScanData::from(component_ids[i], dc_huffman_table_ids[i], ac_huffman_table_ids[i]));
+        }
+
+        Ok(scan_data)
+    }
+
+    fn decode_start_of_frame(&self) -> Result<FrameData> {
+        let MarLen { offset, length } = self.sof_marlen;
+        let mut current_offset = offset;
+
+        let precision= Precision::parse(self.buffer[current_offset]);
+        current_offset += 1;
+
+        println!(
+            "dimension should be {:?}, {:?}",
+            self.buffer[current_offset..current_offset + 2].to_vec(),
+            self.buffer[current_offset + 2..current_offset + 4].to_vec()
+        );
+
+        let image_dim: Simd<u8, 4> =
+            Simd::from_slice(&self.buffer[current_offset..current_offset + 4]);
+        let (image_height, image_width) = (
+            (((image_dim[0] as u16) << 8) | (image_dim[1] as u16)) as usize,
+            (((image_dim[2] as u16) << 8) | (image_dim[3] as u16)) as usize,
+        );
+        current_offset += 4;
+
+        let num_components = ComponentType::from(self.buffer[current_offset]);
+        current_offset += 1;
+
+        let mut components = vec![];
+
+        match num_components {
+            ComponentType::Grayscale => {
+                // naive solution
+                let component_id = self.buffer[current_offset];
+                current_offset += 1;
+                let sampling_factor = self.buffer[current_offset];
+                let (horizontal_factor, vertical_factor) =
+                    (sampling_factor >> 4, sampling_factor & 0b1111);
+                current_offset += 1;
+                let qt_table_id = self.buffer[current_offset];
+
+                components.push(Component::from(
+                    component_id,
+                    horizontal_factor,
+                    vertical_factor,
+                    qt_table_id,
+                ))
+            }
+            ComponentType::Color => {
+                let component_ids = Simd::from([
+                    self.buffer[current_offset],
+                    self.buffer[current_offset + 3],
+                    self.buffer[current_offset + 2 * 3],
+                    0,
+                ]);
+                current_offset += 1;
+
+                let sampling_factors = Simd::from([
+                    self.buffer[current_offset],
+                    self.buffer[current_offset + 3],
+                    self.buffer[current_offset + 2 * 3],
+                    0,
+                ]);
+                current_offset += 1;
+
+                let qt_table_ids = Simd::from([
+                    self.buffer[current_offset],
+                    self.buffer[current_offset + 3],
+                    self.buffer[current_offset + 2 * 3],
+                    0,
+                ]);
+
+                let horizontal_factors = sampling_factors >> 4;
+                let vertical_factors = sampling_factors & Simd::splat(0b1111);
+
+                for i in 0..3 {
+                    let component = Component::from(
+                        component_ids[i],
+                        horizontal_factors[i],
+                        vertical_factors[i],
+                        qt_table_ids[i],
+                    );
+                    components.push(component);
+                }
+            }
+        }
+
+        Ok(FrameData {
+            precision,
+            image_height,
+            image_width,
+            component_type: num_components,
+            components,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -155,6 +296,18 @@ mod tests {
 
     #[test]
     fn test_decode_huffman_trees() -> Result<()> {
+        let mut jfif_reader = JFIFReader {
+            mmap: unsafe { Mmap::map(&File::open("mike.jpg")?)? },
+            cursor: 0,
+        };
+
+        assert!(jfif_reader.parse().is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_sof() -> Result<()> {
         let mut jfif_reader = JFIFReader {
             mmap: unsafe { Mmap::map(&File::open("mike.jpg")?)? },
             cursor: 0,

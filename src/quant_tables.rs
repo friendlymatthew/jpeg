@@ -2,9 +2,27 @@ use crate::quant_tables::TableType::{Chrominance, Luminance};
 use std::simd::Simd;
 
 #[derive(Debug)]
-enum Precision {
+pub(crate) enum Precision {
     EightBit,
     SixteenBit,
+}
+
+impl Precision {
+    pub(crate) fn from(b: u8) -> Self {
+        match b {
+            0 => Precision::EightBit,
+            1 => Precision::SixteenBit,
+            _ => unreachable!(),
+        }
+    }
+
+    pub(crate) fn parse(number_of_bits: u8) -> Self {
+        match number_of_bits {
+            8 => Precision::EightBit,
+            16 => Precision::SixteenBit,
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -31,14 +49,8 @@ impl QuantTable {
                 1 => Chrominance,
                 _ => unreachable!(),
             },
-            precision: match qt_precision {
-                0 => Precision::EightBit,
-                1 => Precision::SixteenBit,
-                _ => unreachable!(),
-            },
+            precision: Precision::from(qt_precision),
             data: qt_data,
         }
     }
-
-
 }

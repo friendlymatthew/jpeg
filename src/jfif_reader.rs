@@ -7,7 +7,7 @@ use std::simd::prelude::*;
 pub const MARKER_BYTES: usize = 2;
 
 // Every marker length denotes a new section of data to process.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct MarLen {
     pub offset: usize,
     pub length: usize,
@@ -167,17 +167,45 @@ impl JFIFReader {
         self.find_markers(Simd::from_array([0xFF, 0xDB]))
     }
 
+    fn find_sos_marker(&mut self) -> Result<MarLen> {
+        let marlens = self.find_markers(Simd::from_array([0xFF, 0xDA]))?;
+        debug_assert_eq!(marlens.len(), 1);
+
+        Ok(marlens[0])
+    }
+
+    fn find_sof_marker(&mut self) -> Result<MarLen> {
+        let marlens = self.find_markers(Simd::from_array([0xFF, 0xC0]))?;
+        debug_assert_eq!(marlens.len(), 1);
+        Ok(marlens[0])
+    }
+
     pub fn parse(&mut self) -> Result<()> {
         self.check_prelude()?;
         self.parse_headers()?;
         let post_header_index = self.cursor;
         self.check_postlude()?;
 
+        // todo refactor, we can do all of this in one pass!
         let huffman_marlens = self.find_huffman_markers()?;
         self.cursor = post_header_index - 2;
+
         let qt_marlens = self.find_dqt_markers()?;
-        assert_eq!(qt_marlens.len(), 2);
-        let decoder = JpegDecoder::new(&self.mmap, huffman_marlens, qt_marlens);
+        debug_assert_eq!(qt_marlens.len(), 2);
+
+        self.cursor = post_header_index - 2;
+        let sos_marlen = self.find_sos_marker()?;
+
+        self.cursor = post_header_index - 2;
+        let sof_marlen = self.find_sof_marker()?;
+
+        let decoder = JpegDecoder::new(
+            &self.mmap,
+            huffman_marlens,
+            qt_marlens,
+            sos_marlen,
+            sof_marlen,
+        );
         decoder.decode()?;
 
         Ok(())
@@ -235,6 +263,31 @@ mod tests {
         let dqt_markers = dqt_markers.unwrap();
         assert_eq!(dqt_markers.len(), 2);
         println!("dqt markers: {:?}", dqt_markers);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_sos_marker() -> Result<()> {
+        let mut jpeg_reader = JFIFReader::from_file_path("mike.jpg")?;
+        let sos_marker = jpeg_reader.find_sos_marker();
+        assert!(sos_marker.is_ok());
+        let sos_marker = sos_marker.unwrap();
+
+        println!("sos data is: {}, {}", sos_marker.offset, sos_marker.length);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_sof_marker() -> Result<()> {
+        let mut jpeg_reader = JFIFReader::from_file_path("mike.jpg")?;
+        let sof_marker = jpeg_reader.find_sof_marker();
+        assert!(sof_marker.is_ok());
+        let sof_marker = sof_marker.unwrap();
+
+        assert_eq!(sof_marker.length, 17);
+        println!("sos data is: {}, {}", sof_marker.offset, sof_marker.length);
 
         Ok(())
     }
