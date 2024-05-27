@@ -90,7 +90,7 @@ impl JpegDecoder {
             let MarLen { offset, length } = marlen;
 
             let mut current_offset = offset + MARKER_BYTES;
-            debug_assert!(self.buffer.len() <= current_offset + QUANTIZATION_TABLE_BYTES);
+            debug_assert!(self.buffer.len() > current_offset + QUANTIZATION_TABLE_BYTES);
 
             let qt_data: Simd<u8, QUANTIZATION_TABLE_BYTES> = Simd::from_slice(
                 &self.buffer[current_offset..current_offset + QUANTIZATION_TABLE_BYTES],
