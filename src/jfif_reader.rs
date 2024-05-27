@@ -1,3 +1,4 @@
+use crate::jpeg_decoder::JpegDecoder;
 use anyhow::{anyhow, Result};
 use memmap::Mmap;
 use std::fs::File;
@@ -5,27 +6,28 @@ use std::simd::prelude::*;
 
 pub const MARKER_BYTES: usize = 2;
 
+// Every marker length denotes a new section of data to process.
 #[derive(Debug, PartialEq)]
 pub struct MarLen {
-    offset: usize,
-    length: usize,
+    pub offset: usize,
+    pub length: usize,
 }
 
-/// JpegReader parses through the mmap, validates markers and prepares data for decoding
-pub struct JpegReader {
+/// JFIFReader parses through the mmap, validates markers and prepares data for decoding
+pub struct JFIFReader {
     pub mmap: Mmap,
     pub cursor: usize,
 }
 
-impl JpegReader {
+impl JFIFReader {
     pub fn from_file(file: File) -> Result<Self> {
         let mmap = unsafe { Mmap::map(&file)? };
-        Ok(JpegReader { mmap, cursor: 0 })
+        Ok(JFIFReader { mmap, cursor: 0 })
     }
 
     pub fn from_file_path(file_path: &str) -> Result<Self> {
         let file = File::open(file_path)?;
-        JpegReader::from_file(file)
+        JFIFReader::from_file(file)
     }
 
     fn at_eof(&self) -> bool {
@@ -34,7 +36,7 @@ impl JpegReader {
 
     fn within_bound(&self, seek_by: usize) -> bool {
         // 0 <= self.cursor, self.cursor + seek_by < self.mmap.len()
-        self.cursor >= 0 && self.cursor + seek_by < self.mmap.len()
+        self.cursor + seek_by < self.mmap.len()
     }
 
     fn parse_marlen(&mut self, expected_markers: Simd<u8, 2>) -> Result<MarLen> {
@@ -111,70 +113,83 @@ impl JpegReader {
         Ok(())
     }
 
-    pub fn find_huffman_markers(&mut self) -> Result<Vec<MarLen>> {
-        let simd_size = 64;
-        let mut temp_chunk = [0u8; 64];
+    fn find_markers(&mut self, expected: Simd<u8, 2>) -> Result<Vec<MarLen>> {
+        const LANE_COUNT: usize = 64;
 
-        let mut huffman_marlens = vec![];
+        let mut temp_chunk = [0u8; LANE_COUNT];
+
+        let mut marlens = vec![];
 
         while self.cursor < self.mmap.len() - 2 {
-            let end = (self.cursor + simd_size).min(self.mmap.len() - 2);
+            let end = (self.cursor + LANE_COUNT).min(self.mmap.len() - MARKER_BYTES);
             let len = end - self.cursor;
 
             temp_chunk[..len].copy_from_slice(&self.mmap[self.cursor..end]);
             let simd_chunk = u8x64::from_array(temp_chunk);
             // simd_chunk: [0x00, 0x00, 0xFF, 0xC4, 0x00, 0xFF, 0x00, 0xC4]
 
-            let mask_ff = u8x64::splat(0xFF);
-            // mask_ff:    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
+            let mask_0 = u8x64::splat(expected[0]);
+            // mask_0:    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
 
-            let mask_c4 = u8x64::splat(0xC4);
-            // mask_c4:    [0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4]
+            let matches_0 = simd_chunk.simd_eq(mask_0);
+            // matches_0 : [false, false, true, false, false, true, false, false]
 
-            let ff_matches = simd_chunk.simd_eq(mask_ff);
-            // ff_matches: [false, false, true, false, false, true, false, false]
-
-            if !ff_matches.any() {
-                self.cursor += simd_size;
-                continue
+            if !matches_0.any() {
+                self.cursor += LANE_COUNT;
+                continue;
             }
 
             let next_byte_chunk = simd_chunk.rotate_elements_left::<1>();
             // next_byte_chunk: [0x00, 0xFF, 0xC4, 0x00, 0xFF, 0x00, 0xC4, 0x00]
 
-            let c4_matches = next_byte_chunk.simd_eq(mask_c4);
-            // c4_matches : [false, false, true, false, false, false, true, false]
+            let mask_1 = u8x64::splat(expected[1]);
+            // mask_1:    [0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4]
 
-            let mut ffc4_mask = ff_matches & c4_matches;
-            // ffc4_mask: [false, false, true, false, false, true*, false, false] <-- * suppose we had another true
+            let matches_1 = next_byte_chunk.simd_eq(mask_1);
+            // matches_1: [false, false, true, false, false, false, true, false]
+
+            let mut matches_mask = matches_0 & matches_1;
+            // matches_mask: [false, false, true, false, false, true*, false, false] <-- * suppose we had another true
 
             let curr_iter_index = self.cursor;
-            while let Some(huffman_marker_index) = ffc4_mask.first_set() {
-                ffc4_mask.set(huffman_marker_index, false);
+            while let Some(marker_index) = matches_mask.first_set() {
+                matches_mask.set(marker_index, false);
                 // ffc4_mask: [false, false, false, false, false, true, false, false]
-                self.cursor += huffman_marker_index;
+                self.cursor += marker_index;
 
-                let huffman_marlen= self.parse_marlen(Simd::from_array([0xFF, 0xC4]))?;
-                huffman_marlens.push(huffman_marlen);
+                let marlen = self.parse_marlen(expected)?;
+                marlens.push(marlen);
 
                 self.cursor = curr_iter_index;
             }
 
-            self.cursor += simd_size
+            self.cursor += LANE_COUNT
         }
 
-
-        Ok(huffman_marlens)
+        Ok(marlens)
     }
 
+    pub fn find_huffman_markers(&mut self) -> Result<Vec<MarLen>> {
+        self.find_markers(Simd::from_array([0xFF, 0xC4]))
+    }
+
+    fn find_dqt_markers(&mut self) -> Result<Vec<MarLen>> {
+        self.find_markers(Simd::from_array([0xFF, 0xDB]))
+    }
 
     pub fn parse(&mut self) -> Result<()> {
         self.check_prelude()?;
         self.parse_headers()?;
         self.check_postlude()?;
 
-        let _huffman_tables = self.find_huffman_markers()?;
+        let post_header_index = self.cursor;
 
+        let huffman_marlens = self.find_huffman_markers()?;
+        self.cursor = post_header_index;
+        let dqt_marlens = self.find_dqt_markers()?;
+
+        let decoder = JpegDecoder::new(&self.mmap, huffman_marlens, dqt_marlens);
+        decoder.decode()?;
 
         Ok(())
     }
@@ -182,34 +197,34 @@ impl JpegReader {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::fs::OpenOptions;
     use std::io::Write;
     use std::sync::Once;
-    use super::*;
     #[test]
     fn test_parse() -> Result<()> {
-        let mut jpeg_reader= JpegReader::from_file_path("mike.jpg")?;
+        let mut jpeg_reader = JFIFReader::from_file_path("mike.jpg")?;
         assert!(jpeg_reader.parse().is_ok());
         Ok(())
     }
 
     #[test]
     fn test_check_prelude() -> Result<()> {
-        let mut jpeg_reader = JpegReader::from_file_path("mike.jpg")?;
+        let mut jpeg_reader = JFIFReader::from_file_path("mike.jpg")?;
         assert!(jpeg_reader.check_prelude().is_ok());
         Ok(())
     }
 
     #[test]
     fn test_check_postlude() -> Result<()> {
-        let mut jpeg_reader = JpegReader::from_file_path("mike.jpg")?;
+        let mut jpeg_reader = JFIFReader::from_file_path("mike.jpg")?;
         assert!(jpeg_reader.check_postlude().is_ok());
         Ok(())
     }
 
     #[test]
     fn test_find_huffman_markers() -> Result<()> {
-        let mut jpeg_reader = JpegReader::from_file_path("mike.jpg")?;
+        let mut jpeg_reader = JFIFReader::from_file_path("mike.jpg")?;
 
         let huffman_markers = jpeg_reader.find_huffman_markers();
         assert!(huffman_markers.is_ok());
@@ -221,14 +236,29 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_find_dqt_markers() -> Result<()> {
+        let mut jpeg_reader = JFIFReader::from_file_path("mike.jpg")?;
+
+        let dqt_markers = jpeg_reader.find_dqt_markers();
+        assert!(dqt_markers.is_ok());
+
+        let dqt_markers = dqt_markers.unwrap();
+        assert_eq!(dqt_markers.len(), 2);
+        println!("dqt markers: {:?}", dqt_markers);
+
+        Ok(())
+    }
+
     static INIT: Once = Once::new();
 
     fn setup() {
         INIT.call_once(|| {
             // Create a temporary file for testing
             let data = vec![
-                0x00, 0x00, 0x00, 0x00, 0xFF, 0xC4, 0x00, 0x02, b'h', b'i', 0xFF, 0xC4, 0x00, 0x03, // 13th (0-indexed)
-                b'w', b'E', b'F', 0xFF, 0xC3, 0xFF, 0xFF, 0xFF, 0xFF, 0xC4, 0x00, 0x01, b'd',
+                0x00, 0x00, 0x00, 0x00, 0xFF, 0xC4, 0x00, 0x02, b'h', b'i', 0xFF, 0xC4, // 11
+                0x00, 0x03, b'w', b'E', b'F', 0xFF, 0xC3, 0xFF, 0xFF, 0xFF, 0xFF, 0xC4, 0x00, 0x01,
+                b'd',
             ];
 
             let mut file = OpenOptions::new()
@@ -241,7 +271,6 @@ mod tests {
         });
     }
 
-
     #[test]
     fn test_huffman_markers_basic_1() -> Result<()> {
         setup();
@@ -249,15 +278,24 @@ mod tests {
         let file = File::open("mock_jpeg_data.bin")?;
         let mmap = unsafe { Mmap::map(&file)? };
 
-        let mut jpeg_reader = JpegReader { mmap, cursor: 0 };
+        let mut jpeg_reader = JFIFReader { mmap, cursor: 0 };
 
         let huffman_markers = jpeg_reader.find_huffman_markers()?;
         assert_eq!(
             huffman_markers,
             vec![
-                MarLen { offset: 8, length: 2 },
-                MarLen { offset: 14, length: 3 },
-                MarLen { offset: 26, length: 1 }
+                MarLen {
+                    offset: 8,
+                    length: 2
+                },
+                MarLen {
+                    offset: 14,
+                    length: 3
+                },
+                MarLen {
+                    offset: 26,
+                    length: 1
+                }
             ]
         );
 
