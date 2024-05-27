@@ -1,29 +1,34 @@
-use crate::huffman_table::{CodeFreq, HuffmanTree};
-use crate::jfif_reader::MarLen;
+use crate::huffman_tree::{CodeFreq, HuffmanTree};
+use crate::jfif_reader::{MarLen, MARKER_BYTES};
 use anyhow::{anyhow, Result};
 use std::iter;
 use std::simd::prelude::*;
+use crate::quant_tables::QuantTable;
 
-const HUFFMAN_INFORMATION_BYTES: usize = 1;
+const INFORMATION_BYTES: usize = 1;
 const HUFFMAN_SYM_BYTES: usize = 16;
+
+pub const QUANTIZATION_TABLE_BYTES: usize = 64;
 
 pub struct JpegDecoder {
     buffer: Vec<u8>,
     huffman_marlen: Vec<MarLen>,
-    dqt_marlen: Vec<MarLen>,
+    qt_marlen: Vec<MarLen>,
 }
 
 impl JpegDecoder {
-    pub fn new(buffer: &[u8], huffman_marlen: Vec<MarLen>, dqt_marlen: Vec<MarLen>) -> Self {
+    pub fn new(buffer: &[u8], huffman_marlen: Vec<MarLen>, qt_marlen: Vec<MarLen>) -> Self {
         JpegDecoder {
             buffer: buffer.to_vec(),
             huffman_marlen,
-            dqt_marlen,
+            qt_marlen,
         }
     }
 
-    fn decode(&self) -> Result<()> {
-        let huffman_tables = self.decode_huffman_tables()?;
+    pub fn decode(&self) -> Result<()> {
+        let huffman_trees = self.decode_huffman_trees()?;
+        let quant_tables = self.decode_quant_table()?;
+
 
 
         Ok(())
@@ -39,11 +44,11 @@ impl JpegDecoder {
         );
 
         // extract ht information
-        let ht_number_mask = Simd::splat(0x0F);
+        let ht_number_mask = Simd::splat(0b1111);
         let ht_numbers = ht_informations & ht_number_mask;
 
         // extract ht type (bit 4)
-        let ht_type_mask = Simd::splat(0x10);
+        let ht_type_mask = Simd::splat(0b10000);
         let ht_types = (ht_informations & ht_type_mask) >> 4;
 
         let ht_numbers = ht_numbers.to_array();
@@ -52,7 +57,53 @@ impl JpegDecoder {
         Ok((ht_types, ht_numbers))
     }
 
-    pub fn decode_huffman_tables(&self) -> Result<Vec<HuffmanTree>> {
+    fn decode_quant_table_information(&self) -> Result<([u8; 2], [u8; 2])> {
+        let qt_informations: Simd<u8, 2> = Simd::from_slice(
+            &self
+                .qt_marlen
+                .iter()
+                .map(|marlen| self.buffer[marlen.offset])
+                .collect::<Vec<u8>>(),
+        );
+
+        // extract ht information
+        let qt_precisions_mask = Simd::splat(0b1111);
+        let qt_precisions = qt_informations & qt_precisions_mask;
+
+        let qt_ids_mask = Simd::splat(0b11110000);
+        let qt_ids = (qt_informations & qt_ids_mask) >> 4;
+
+        let qt_precisions = qt_precisions.to_array();
+        let qt_ids = qt_ids.to_array();
+
+        Ok((qt_ids, qt_precisions))
+    }
+
+    pub fn decode_quant_table(&self) -> Result<Vec<QuantTable>> {
+        debug_assert_eq!(self.qt_marlen.len(), 2);
+
+        let mut tables = vec![];
+
+        let (qt_ids, qt_precisions) = self.decode_quant_table_information()?;
+
+        for (idx, marlen) in self.qt_marlen.iter().enumerate() {
+            let MarLen { offset, length } = marlen;
+
+            let mut current_offset = offset + MARKER_BYTES;
+            debug_assert!(self.buffer.len() <= current_offset + QUANTIZATION_TABLE_BYTES);
+
+            let qt_data: Simd<u8, QUANTIZATION_TABLE_BYTES> = Simd::from_slice(
+                &self.buffer[current_offset..current_offset + QUANTIZATION_TABLE_BYTES],
+            );
+
+            let (qt_id, qt_precision) = (qt_ids[idx], qt_precisions[idx]);
+            tables.push(QuantTable::from(qt_id, qt_precision, qt_data))
+        }
+
+        Ok(tables)
+    }
+
+    pub fn decode_huffman_trees(&self) -> Result<Vec<HuffmanTree>> {
         debug_assert_eq!(self.huffman_marlen.len(), 4);
 
         let mut trees = vec![];
@@ -62,7 +113,7 @@ impl JpegDecoder {
         for (idx, marlen) in self.huffman_marlen.iter().enumerate() {
             let MarLen { offset, length } = marlen;
 
-            let mut current_offset = offset + HUFFMAN_INFORMATION_BYTES;
+            let mut current_offset = offset + INFORMATION_BYTES;
 
             if self.buffer.len() < current_offset + HUFFMAN_SYM_BYTES {
                 return Err(anyhow!("Not enough data to extract symbol table"));
@@ -103,7 +154,7 @@ mod tests {
     use std::fs::File;
 
     #[test]
-    fn test_decode_huffman_tables() -> Result<()> {
+    fn test_decode_huffman_trees() -> Result<()> {
         let mut jfif_reader = JFIFReader {
             mmap: unsafe { Mmap::map(&File::open("mike.jpg")?)? },
             cursor: 0,
