@@ -22,6 +22,13 @@ impl JpegDecoder {
         }
     }
 
+    fn decode(&self) -> Result<()> {
+        let huffman_tables = self.decode_huffman_tables()?;
+
+
+        Ok(())
+    }
+
     fn decode_huffman_information(&self) -> Result<([u8; 4], [u8; 4])> {
         let ht_informations: Simd<u8, 4> = Simd::from_slice(
             &self
@@ -45,8 +52,10 @@ impl JpegDecoder {
         Ok((ht_types, ht_numbers))
     }
 
-    pub fn decode_huffman_tables(&self) -> Result<()> {
+    pub fn decode_huffman_tables(&self) -> Result<Vec<HuffmanTree>> {
         debug_assert_eq!(self.huffman_marlen.len(), 4);
+
+        let mut trees = vec![];
 
         let (ht_types, ht_numbers) = self.decode_huffman_information()?;
 
@@ -79,9 +88,10 @@ impl JpegDecoder {
                 .collect::<Vec<CodeFreq>>();
 
             let tree = HuffmanTree::from(ht_types[idx], ht_numbers[idx] as usize, code_freq);
+            trees.push(tree);
         }
 
-        Ok(())
+        Ok(trees)
     }
 }
 

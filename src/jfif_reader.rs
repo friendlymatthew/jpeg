@@ -189,7 +189,7 @@ impl JFIFReader {
         let dqt_marlens = self.find_dqt_markers()?;
 
         let decoder = JpegDecoder::new(&self.mmap, huffman_marlens, dqt_marlens);
-        decoder.decode_huffman_tables()?;
+        decoder.decode()?;
 
         Ok(())
     }
