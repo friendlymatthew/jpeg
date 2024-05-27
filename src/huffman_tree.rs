@@ -96,7 +96,6 @@ pub struct HuffmanTree {
 }
 
 impl HuffmanTree {
-
     pub fn from(ht_type: u8, ht_id: usize, code_freqs: Vec<CodeFreq>) -> Self {
         let mut min_heap = BinaryHeap::new();
 
@@ -113,7 +112,7 @@ impl HuffmanTree {
             let left = min_heap.pop();
 
             if min_heap.len() == 1 {
-                break
+                break;
             }
 
             let right = min_heap.pop();
@@ -123,20 +122,19 @@ impl HuffmanTree {
                     let sum_freq = left_item.freq + right_item.freq;
 
                     let new_node = unsafe {
-                        NonNull::new_unchecked(Box::into_raw(Box::new(
-                            HuffmanNode {
-                                internal: sum_freq,
-                                leaf: CodeFreq { code: u8::MAX, freq: 0 },
-                                left: left_item.node,
-                                right: right_item.node,
-                            }
-                        )))
+                        NonNull::new_unchecked(Box::into_raw(Box::new(HuffmanNode {
+                            internal: sum_freq,
+                            leaf: CodeFreq {
+                                code: u8::MAX,
+                                freq: 0,
+                            },
+                            left: left_item.node,
+                            right: right_item.node,
+                        })))
                     };
 
-                    min_heap.push(
-                        HeapItem::from(sum_freq, Some(new_node))
-                    )
-                },
+                    min_heap.push(HeapItem::from(sum_freq, Some(new_node)))
+                }
                 _ => break,
             }
         }
@@ -144,7 +142,6 @@ impl HuffmanTree {
         let root = min_heap.pop();
         debug_assert!(root.is_some());
         let HeapItem { node: root, .. } = root.unwrap();
-
 
         let mut tree = HuffmanTree {
             root,
@@ -170,8 +167,13 @@ mod tests {
             min_heap.push(HeapItem {
                 freq: i,
                 node: Some(unsafe {
-                    NonNull::new_unchecked(Box::into_raw(Box::new(HuffmanNode::new_leaf(CodeFreq { code: i as u8, freq: i}))))
-                })
+                    NonNull::new_unchecked(Box::into_raw(Box::new(HuffmanNode::new_leaf(
+                        CodeFreq {
+                            code: i as u8,
+                            freq: i,
+                        },
+                    ))))
+                }),
             })
         }
 

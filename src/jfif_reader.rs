@@ -58,7 +58,7 @@ impl JFIFReader {
     fn check_prelude(&mut self) -> Result<()> {
         // The JPEG File Interchange Format requires the APP0 marker right after the SOI marker.
         let markers = u8x4::from_slice(&self.mmap[self.cursor..self.cursor + (MARKER_BYTES * 2)]);
-        self.cursor += 4;
+        self.cursor += MARKER_BYTES * 2;
 
         let expected_markers = u8x4::from_array([0xFF, 0xD8, 0xFF, 0xE0]);
         let mask_markers = markers.simd_eq(expected_markers);
@@ -126,13 +126,9 @@ impl JFIFReader {
 
             temp_chunk[..len].copy_from_slice(&self.mmap[self.cursor..end]);
             let simd_chunk = u8x64::from_array(temp_chunk);
-            // simd_chunk: [0x00, 0x00, 0xFF, 0xC4, 0x00, 0xFF, 0x00, 0xC4]
 
             let mask_0 = u8x64::splat(expected[0]);
-            // mask_0:    [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
-
             let matches_0 = simd_chunk.simd_eq(mask_0);
-            // matches_0 : [false, false, true, false, false, true, false, false]
 
             if !matches_0.any() {
                 self.cursor += LANE_COUNT;
@@ -140,21 +136,15 @@ impl JFIFReader {
             }
 
             let next_byte_chunk = simd_chunk.rotate_elements_left::<1>();
-            // next_byte_chunk: [0x00, 0xFF, 0xC4, 0x00, 0xFF, 0x00, 0xC4, 0x00]
 
             let mask_1 = u8x64::splat(expected[1]);
-            // mask_1:    [0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4, 0xC4]
-
             let matches_1 = next_byte_chunk.simd_eq(mask_1);
-            // matches_1: [false, false, true, false, false, false, true, false]
 
             let mut matches_mask = matches_0 & matches_1;
-            // matches_mask: [false, false, true, false, false, true*, false, false] <-- * suppose we had another true
 
             let curr_iter_index = self.cursor;
             while let Some(marker_index) = matches_mask.first_set() {
                 matches_mask.set(marker_index, false);
-                // ffc4_mask: [false, false, false, false, false, true, false, false]
                 self.cursor += marker_index;
 
                 let marlen = self.parse_marlen(expected)?;
@@ -180,15 +170,14 @@ impl JFIFReader {
     pub fn parse(&mut self) -> Result<()> {
         self.check_prelude()?;
         self.parse_headers()?;
+        let post_header_index = self.cursor;
         self.check_postlude()?;
 
-        let post_header_index = self.cursor;
-
         let huffman_marlens = self.find_huffman_markers()?;
-        self.cursor = post_header_index;
-        let dqt_marlens = self.find_dqt_markers()?;
-
-        let decoder = JpegDecoder::new(&self.mmap, huffman_marlens, dqt_marlens);
+        self.cursor = post_header_index - 2;
+        let qt_marlens = self.find_dqt_markers()?;
+        assert_eq!(qt_marlens.len(), 2);
+        let decoder = JpegDecoder::new(&self.mmap, huffman_marlens, qt_marlens);
         decoder.decode()?;
 
         Ok(())
