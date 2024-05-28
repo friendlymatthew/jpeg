@@ -1,12 +1,12 @@
 use crate::component::{Component, ComponentType, FrameData, ScanData};
 use crate::huffman_tree::{CodeFreq, HuffmanTree};
+use crate::image::Image;
 use crate::jfif_reader::{MarLen, MARKER_BYTES};
 use crate::quant_tables::{Precision, QuantTable};
 use anyhow::{anyhow, Result};
 use std::iter;
 use std::simd::prelude::*;
 use std::simd::LaneCount;
-use crate::image::Image;
 
 const INFORMATION_BYTES: usize = 1;
 const HUFFMAN_SYM_BYTES: usize = 16;
@@ -43,6 +43,8 @@ impl JpegDecoder {
         let quant_tables = self.decode_quant_table()?;
         let start_of_frame = self.decode_start_of_frame()?;
         let (start_of_scan, start_of_image_data_index) = self.decode_start_of_scan()?;
+
+        println!("image data without byte stuffing: {}, entire length of data: {}", self.buffer.len() - start_of_image_data_index, self.buffer.len());
 
         let image_data = self.sanitize_image_data(start_of_image_data_index)?;
 
@@ -306,9 +308,6 @@ impl JpegDecoder {
     fn sanitize_image_data(&self, start_of_image_data_index: usize) -> Result<Vec<u8>> {
         let end_of_image_data_index = self.buffer.len() - MARKER_BYTES - 1;
         let image_length = end_of_image_data_index - start_of_image_data_index;
-        let image_data = self.buffer[start_of_image_data_index..end_of_image_data_index].to_owned();
-
-        println!("image length: {image_length}");
 
         let mut current_index = start_of_image_data_index;
         const LANE_COUNT: usize = 64;
@@ -362,17 +361,52 @@ mod tests {
     use super::*;
     use crate::jfif_reader::JFIFReader;
     use memmap::Mmap;
-    use std::fs::File;
+    use std::fs::{File, OpenOptions};
+    use std::io::Write;
+    use std::sync::Once;
 
-    #[test]
-    fn test_decode_huffman_trees() -> Result<()> {
+    fn mike_decoder() -> Result<JpegDecoder> {
         let mut jfif_reader = JFIFReader {
             mmap: unsafe { Mmap::map(&File::open("mike.jpg")?)? },
             cursor: 0,
         };
 
-        assert!(jfif_reader.parse().is_ok());
+        Ok(jfif_reader.decoder()?)
+    }
+
+    #[test]
+    fn test_decode_mike() -> Result<()> {
+        let decoder = mike_decoder()?;
+        let huffman_trees = decoder.decode_huffman_trees()?;
+        let FrameData { image_width, image_height, .. } = decoder.decode_start_of_frame()?;
+
+        let qt_tables = decoder.decode_quant_table()?;
+
+        assert_eq!(image_width, 640);
+        assert_eq!(image_height, 763);
+        assert_eq!(qt_tables.len(), 2);
 
         Ok(())
     }
+
+    static INIT: Once = Once::new();
+
+    fn setup() {
+        INIT.call_once(|| {
+            let data = vec![
+                0xFF, 0xDA,
+            ];
+
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open("mock_jpeg_data_decode.bin")
+                .unwrap();
+            file.write_all(&data).unwrap();
+        });
+    }
+
+
+
 }

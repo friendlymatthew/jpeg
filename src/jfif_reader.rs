@@ -1,9 +1,9 @@
+use crate::image::Image;
 use crate::jpeg_decoder::JpegDecoder;
 use anyhow::{anyhow, Result};
 use memmap::Mmap;
 use std::fs::File;
 use std::simd::prelude::*;
-use crate::image::Image;
 
 pub const MARKER_BYTES: usize = 2;
 
@@ -52,7 +52,7 @@ impl JFIFReader {
 
         return Ok(MarLen {
             offset: self.cursor,
-            length: length as usize,
+            length: length as usize - MARKER_BYTES,
         });
     }
 
@@ -160,28 +160,28 @@ impl JFIFReader {
         Ok(marlens)
     }
 
-    pub fn find_huffman_markers(&mut self) -> Result<Vec<MarLen>> {
+    pub(crate) fn find_huffman_markers(&mut self) -> Result<Vec<MarLen>> {
         self.find_markers(Simd::from_array([0xFF, 0xC4]))
     }
 
-    fn find_dqt_markers(&mut self) -> Result<Vec<MarLen>> {
+    pub(crate) fn find_dqt_markers(&mut self) -> Result<Vec<MarLen>> {
         self.find_markers(Simd::from_array([0xFF, 0xDB]))
     }
 
-    fn find_sos_marker(&mut self) -> Result<MarLen> {
+    pub(crate) fn find_sos_marker(&mut self) -> Result<MarLen> {
         let marlens = self.find_markers(Simd::from_array([0xFF, 0xDA]))?;
         debug_assert_eq!(marlens.len(), 1);
 
         Ok(marlens[0])
     }
 
-    fn find_sof_marker(&mut self) -> Result<MarLen> {
+    pub(crate) fn find_sof_marker(&mut self) -> Result<MarLen> {
         let marlens = self.find_markers(Simd::from_array([0xFF, 0xC0]))?;
         debug_assert_eq!(marlens.len(), 1);
         Ok(marlens[0])
     }
 
-    pub fn parse(&mut self) -> Result<()> {
+    pub fn decoder(&mut self) -> Result<JpegDecoder> {
         self.check_prelude()?;
         self.parse_headers()?;
         let post_header_index = self.cursor;
@@ -193,24 +193,20 @@ impl JFIFReader {
 
         let qt_marlens = self.find_dqt_markers()?;
         debug_assert_eq!(qt_marlens.len(), 2);
-
         self.cursor = post_header_index - 2;
+
         let sos_marlen = self.find_sos_marker()?;
-
         self.cursor = post_header_index - 2;
+
         let sof_marlen = self.find_sof_marker()?;
 
-        let decoder = JpegDecoder::new(
+        Ok(JpegDecoder::new(
             &self.mmap,
             huffman_marlens,
             qt_marlens,
             sos_marlen,
             sof_marlen,
-        );
-
-        let image = decoder.decode()?;
-
-        Ok(())
+        ))
     }
 }
 
@@ -221,9 +217,9 @@ mod tests {
     use std::io::Write;
     use std::sync::Once;
     #[test]
-    fn test_parse() -> Result<()> {
+    fn test_decoder() -> Result<()> {
         let mut jpeg_reader = JFIFReader::from_file_path("mike.jpg")?;
-        assert!(jpeg_reader.parse().is_ok());
+        assert!(jpeg_reader.decoder().is_ok());
         Ok(())
     }
 
@@ -288,7 +284,7 @@ mod tests {
         assert!(sof_marker.is_ok());
         let sof_marker = sof_marker.unwrap();
 
-        assert_eq!(sof_marker.length, 17);
+        assert_eq!(sof_marker.length, 17 - MARKER_BYTES);
         println!("sos data is: {}, {}", sof_marker.offset, sof_marker.length);
 
         Ok(())
@@ -300,8 +296,8 @@ mod tests {
         INIT.call_once(|| {
             // Create a temporary file for testing
             let data = vec![
-                0x00, 0x00, 0x00, 0x00, 0xFF, 0xC4, 0x00, 0x02, b'h', b'i', 0xFF, 0xC4, // 11
-                0x00, 0x03, b'w', b'E', b'F', 0xFF, 0xC3, 0xFF, 0xFF, 0xFF, 0xFF, 0xC4, 0x00, 0x01,
+                0x00, 0x00, 0x00, 0x00, 0xFF, 0xC4, 0x00, 0x04, b'h', b'i', 0xFF, 0xC4, // 11
+                0x00, 0x05, b'w', b'E', b'F', 0xFF, 0xC3, 0xFF, 0xFF, 0xFF, 0xFF, 0xC4, 0x00, 0x03,
                 b'd',
             ];
 
