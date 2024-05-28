@@ -91,7 +91,7 @@ impl JFIFReader {
 
         let length =
             u16::from_be_bytes([self.mmap[self.cursor], self.mmap[self.cursor + 1]]) as usize;
-        self.cursor += 2;
+        self.cursor += MARKER_BYTES;
 
         if !self.within_bound(length) {
             return Err(anyhow!("we've reached the eof, unable to seek past length"));
@@ -109,7 +109,7 @@ impl JFIFReader {
             return Err(anyhow!("identifier was not equal to expected"));
         }
 
-        self.cursor += length;
+        self.cursor += length - MARKER_BYTES;
 
         Ok(())
     }
@@ -189,13 +189,13 @@ impl JFIFReader {
 
         // todo refactor, we can do all of this in one pass!
         let huffman_marlens = self.find_huffman_markers()?;
-        self.cursor = post_header_index - 2;
+        self.cursor = post_header_index;
 
         let qt_marlens = self.find_dqt_markers()?;
-        self.cursor = post_header_index - 2;
+        self.cursor = post_header_index;
 
         let sos_marlen = self.find_sos_marker()?;
-        self.cursor = post_header_index - 2;
+        self.cursor = post_header_index;
 
         let sof_marlen = self.find_sof_marker()?;
 
