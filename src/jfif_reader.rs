@@ -192,7 +192,6 @@ impl JFIFReader {
         self.cursor = post_header_index - 2;
 
         let qt_marlens = self.find_dqt_markers()?;
-        debug_assert_eq!(qt_marlens.len(), 2);
         self.cursor = post_header_index - 2;
 
         let sos_marlen = self.find_sos_marker()?;

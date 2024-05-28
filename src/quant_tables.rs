@@ -1,7 +1,7 @@
 use crate::quant_tables::TableType::{Chrominance, Luminance};
 use std::simd::Simd;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum Precision {
     EightBit,
     SixteenBit,

@@ -26,7 +26,7 @@ impl ScanData {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum ComponentType {
     Grayscale,
     Color,
@@ -42,12 +42,12 @@ impl ComponentType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Component {
-    component_id: u8,
-    horizontal_scaling_factor: u8,
-    vertical_scaling_factor: u8,
-    qt_table_id: u8,
+    pub(crate) component_id: u8,
+    pub(crate) horizontal_scaling_factor: u8,
+    pub(crate) vertical_scaling_factor: u8,
+    pub(crate) qt_table_id: u8,
 }
 
 impl Component {

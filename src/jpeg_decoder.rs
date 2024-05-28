@@ -44,7 +44,11 @@ impl JpegDecoder {
         let start_of_frame = self.decode_start_of_frame()?;
         let (start_of_scan, start_of_image_data_index) = self.decode_start_of_scan()?;
 
-        println!("image data without byte stuffing: {}, entire length of data: {}", self.buffer.len() - start_of_image_data_index, self.buffer.len());
+        println!(
+            "image data without byte stuffing: {}, entire length of data: {}",
+            self.buffer.len() - start_of_image_data_index,
+            self.buffer.len()
+        );
 
         let image_data = self.sanitize_image_data(start_of_image_data_index)?;
 
@@ -378,7 +382,11 @@ mod tests {
     fn test_decode_mike() -> Result<()> {
         let decoder = mike_decoder()?;
         let huffman_trees = decoder.decode_huffman_trees()?;
-        let FrameData { image_width, image_height, .. } = decoder.decode_start_of_frame()?;
+        let FrameData {
+            image_width,
+            image_height,
+            ..
+        } = decoder.decode_start_of_frame()?;
 
         let qt_tables = decoder.decode_quant_table()?;
 
@@ -391,22 +399,80 @@ mod tests {
 
     static INIT: Once = Once::new();
 
+    // this contains a mock start of frame and start of scan
     fn setup() {
         INIT.call_once(|| {
             let data = vec![
-                0xFF, 0xDA,
+                0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x07, b'J', b'F', b'I', b'F', 0x00, 0xFF, 0xC0, 0x00,
+                0x11, 0x08, 0x00, 0x02, 0x00, 0x06, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03,
+                0x11, 0x01, 0xFF, 0xDA, 0x00, 0x0C, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00,
+                0x3F, 0x00, // end of sos
+                0x00, // this should be the start of image data
+                0x00, 0xFF, 0xD9,
             ];
 
             let mut file = OpenOptions::new()
                 .write(true)
                 .create(true)
                 .truncate(true)
-                .open("mock_jpeg_data_decode.bin")
+                .open("mock_jpeg_decode.bin")
                 .unwrap();
             file.write_all(&data).unwrap();
         });
     }
 
+    #[test]
+    fn test_decoding_various_markers() -> Result<()> {
+        setup();
 
+        let file = File::open("mock_jpeg_decode.bin")?;
+        let mmap = unsafe { Mmap::map(&file)? };
 
+        let mut jpeg_reader = JFIFReader { mmap, cursor: 0 };
+        let decoder = jpeg_reader.decoder()?;
+
+        let FrameData {
+            precision,
+            image_height,
+            image_width,
+            component_type,
+            components,
+        } = decoder.decode_start_of_frame()?;
+        assert_eq!(precision, Precision::EightBit);
+        assert_eq!(image_width, 6);
+        assert_eq!(image_height, 2);
+        assert_eq!(component_type, ComponentType::Color);
+        assert_eq!(components.len(), 3);
+        assert_eq!(
+            [
+                Component {
+                    component_id: 1,
+                    horizontal_scaling_factor: 2,
+                    vertical_scaling_factor: 2,
+                    qt_table_id: 0
+                },
+                Component {
+                    component_id: 2,
+                    horizontal_scaling_factor: 1,
+                    vertical_scaling_factor: 1,
+                    qt_table_id: 1
+                },
+                Component {
+                    component_id: 3,
+                    horizontal_scaling_factor: 1,
+                    vertical_scaling_factor: 1,
+                    qt_table_id: 1
+                }
+            ]
+            .to_vec(),
+            components
+        );
+
+        let (scan_data, start_of_index) = decoder.decode_start_of_scan()?;
+
+        assert_eq!(start_of_index, 44);
+        assert_eq!(scan_data.len(), 3);
+
+        Ok(())
+    }
 }

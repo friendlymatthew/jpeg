@@ -28,19 +28,16 @@ impl Image {
         // debug_assert_eq!(image_height * image_width, self.data.len());
 
         const LANE_COUNT: usize = 64;
-
-
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use std::fs::File;
-    use memmap::Mmap;
+    use super::*;
     use crate::jfif_reader::JFIFReader;
     use crate::jpeg_decoder::JpegDecoder;
-    use super::*;
+    use memmap::Mmap;
+    use std::fs::File;
 
     fn mike_decoder() -> anyhow::Result<JpegDecoder> {
         let mut jfif_reader = JFIFReader {
