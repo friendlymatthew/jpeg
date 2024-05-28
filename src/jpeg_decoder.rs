@@ -4,8 +4,9 @@ use crate::jfif_reader::{MarLen, MARKER_BYTES};
 use crate::quant_tables::{Precision, QuantTable};
 use anyhow::{anyhow, Result};
 use std::iter;
-use std::iter::Scan;
 use std::simd::prelude::*;
+use std::simd::LaneCount;
+use crate::image::Image;
 
 const INFORMATION_BYTES: usize = 1;
 const HUFFMAN_SYM_BYTES: usize = 16;
@@ -37,13 +38,21 @@ impl JpegDecoder {
         }
     }
 
-    pub fn decode(&self) -> Result<()> {
+    pub fn decode(&self) -> Result<Image> {
         let huffman_trees = self.decode_huffman_trees()?;
         let quant_tables = self.decode_quant_table()?;
         let start_of_frame = self.decode_start_of_frame()?;
-        let start_of_scan = self.decode_start_of_scan()?;
+        let (start_of_scan, start_of_image_data_index) = self.decode_start_of_scan()?;
 
-        Ok(())
+        let image_data = self.sanitize_image_data(start_of_image_data_index)?;
+
+        Ok(Image {
+            data: image_data,
+            huffman_trees,
+            quant_tables,
+            start_of_frame,
+            start_of_scan,
+        })
     }
 
     fn decode_huffman_information(&self) -> Result<([u8; 4], [u8; 4])> {
@@ -157,14 +166,17 @@ impl JpegDecoder {
         Ok(trees)
     }
 
-    fn decode_start_of_scan(&self) -> Result<Vec<ScanData>> {
-        let MarLen { offset, length } = self.sos_marlen;
+    fn decode_start_of_scan(&self) -> Result<(Vec<ScanData>, usize)> {
+        let MarLen { offset, .. } = self.sos_marlen;
         let mut current_offset = offset;
 
         let num_components = self.buffer[current_offset];
         current_offset += 1;
 
-        debug_assert_eq!(num_components, 3, "as of now assume only dealing with color components is 3");
+        debug_assert_eq!(
+            num_components, 3,
+            "as of now assume only dealing with color components is 3"
+        );
 
         let mut scan_data = vec![];
 
@@ -184,28 +196,32 @@ impl JpegDecoder {
             0,
         ]);
 
-        let dc_huffman_table_ids  = huffman_table_ids >> 4;
+        current_offset -= 1;
+
+        let dc_huffman_table_ids = huffman_table_ids >> 4;
         let ac_huffman_table_ids = huffman_table_ids & Simd::splat(0b1111);
 
-        for i in 0..3{
-            scan_data.push(ScanData::from(component_ids[i], dc_huffman_table_ids[i], ac_huffman_table_ids[i]));
+        for i in 0..3 {
+            scan_data.push(ScanData::from(
+                component_ids[i],
+                dc_huffman_table_ids[i],
+                ac_huffman_table_ids[i],
+            ));
         }
 
-        Ok(scan_data)
+        current_offset += 2 * (num_components as usize);
+        // always skip 3 bytes.
+        current_offset += 3;
+
+        Ok((scan_data, current_offset))
     }
 
     fn decode_start_of_frame(&self) -> Result<FrameData> {
         let MarLen { offset, length } = self.sof_marlen;
         let mut current_offset = offset;
 
-        let precision= Precision::parse(self.buffer[current_offset]);
+        let precision = Precision::parse(self.buffer[current_offset]);
         current_offset += 1;
-
-        println!(
-            "dimension should be {:?}, {:?}",
-            self.buffer[current_offset..current_offset + 2].to_vec(),
-            self.buffer[current_offset + 2..current_offset + 4].to_vec()
-        );
 
         let image_dim: Simd<u8, 4> =
             Simd::from_slice(&self.buffer[current_offset..current_offset + 4]);
@@ -213,6 +229,7 @@ impl JpegDecoder {
             (((image_dim[0] as u16) << 8) | (image_dim[1] as u16)) as usize,
             (((image_dim[2] as u16) << 8) | (image_dim[3] as u16)) as usize,
         );
+
         current_offset += 4;
 
         let num_components = ComponentType::from(self.buffer[current_offset]);
@@ -285,6 +302,59 @@ impl JpegDecoder {
             components,
         })
     }
+
+    fn sanitize_image_data(&self, start_of_image_data_index: usize) -> Result<Vec<u8>> {
+        let end_of_image_data_index = self.buffer.len() - MARKER_BYTES - 1;
+        let image_length = end_of_image_data_index - start_of_image_data_index;
+        let image_data = self.buffer[start_of_image_data_index..end_of_image_data_index].to_owned();
+
+        println!("image length: {image_length}");
+
+        let mut current_index = start_of_image_data_index;
+        const LANE_COUNT: usize = 64;
+
+        let mut temp_chunk = [0u8; LANE_COUNT];
+        let mut result = Vec::with_capacity(image_length);
+
+        while current_index < self.buffer.len() - MARKER_BYTES {
+            let end = (current_index + LANE_COUNT).min(self.buffer.len() - MARKER_BYTES);
+            let len = end - current_index;
+
+            temp_chunk[..len].copy_from_slice(&self.buffer[current_index..end]);
+
+            let image_chunk: Simd<u8, LANE_COUNT> = Simd::from_slice(&temp_chunk);
+            // suppose i just had [0xFF, 0x00, 0xFF, 0x00]
+
+            let ff_mask = image_chunk.simd_eq(Simd::splat(0xFF));
+            // [true, false, true, false]
+
+            let shift_image_chunk = image_chunk.rotate_elements_left::<1>();
+            // [0x00, 0xFF, 0x00, 0x00]
+            let zero_mask = shift_image_chunk.simd_eq(Simd::splat(0x00));
+            // [true, false, true, true]
+
+            let zero_after_ff_mask = ff_mask & zero_mask;
+            // [ true, false, true, false]
+
+            let mut chunk_result = Vec::with_capacity(LANE_COUNT);
+            let mut i = 0;
+
+            while i < len {
+                if zero_after_ff_mask.test(i) {
+                    chunk_result.push(temp_chunk[i]);
+                    i += 2;
+                    continue;
+                }
+                chunk_result.push(temp_chunk[i]);
+                i += 1;
+            }
+
+            result.extend(chunk_result);
+            current_index += LANE_COUNT;
+        }
+
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -296,18 +366,6 @@ mod tests {
 
     #[test]
     fn test_decode_huffman_trees() -> Result<()> {
-        let mut jfif_reader = JFIFReader {
-            mmap: unsafe { Mmap::map(&File::open("mike.jpg")?)? },
-            cursor: 0,
-        };
-
-        assert!(jfif_reader.parse().is_ok());
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_sof() -> Result<()> {
         let mut jfif_reader = JFIFReader {
             mmap: unsafe { Mmap::map(&File::open("mike.jpg")?)? },
             cursor: 0,

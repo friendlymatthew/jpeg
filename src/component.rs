@@ -3,8 +3,8 @@ use crate::quant_tables::Precision;
 #[derive(Debug)]
 pub struct FrameData {
     pub(crate) precision: Precision,
-    pub(crate) image_height: usize,  // in pixels
-    pub(crate) image_width: usize,   //
+    pub(crate) image_height: usize, // in pixels
+    pub(crate) image_width: usize,  //
     pub(crate) component_type: ComponentType,
     pub(crate) components: Vec<Component>,
 }
@@ -21,7 +21,7 @@ impl ScanData {
         ScanData {
             component_id,
             dc_table_id,
-            ac_table_id
+            ac_table_id,
         }
     }
 }

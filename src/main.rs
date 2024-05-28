@@ -8,4 +8,7 @@ mod jfif_reader;
 mod jpeg_decoder;
 mod quant_tables;
 mod rgb_to_grayscale;
-fn main() {}
+mod image;
+
+fn main() {
+}

@@ -3,6 +3,7 @@ use anyhow::{anyhow, Result};
 use memmap::Mmap;
 use std::fs::File;
 use std::simd::prelude::*;
+use crate::image::Image;
 
 pub const MARKER_BYTES: usize = 2;
 
@@ -120,7 +121,7 @@ impl JFIFReader {
 
         let mut marlens = vec![];
 
-        while self.cursor < self.mmap.len() - 2 {
+        while self.cursor < self.mmap.len() - MARKER_BYTES {
             let end = (self.cursor + LANE_COUNT).min(self.mmap.len() - MARKER_BYTES);
             let len = end - self.cursor;
 
@@ -206,7 +207,8 @@ impl JFIFReader {
             sos_marlen,
             sof_marlen,
         );
-        decoder.decode()?;
+
+        let image = decoder.decode()?;
 
         Ok(())
     }
