@@ -41,6 +41,10 @@ impl JFIFReader {
     }
 
     fn parse_marlen(&mut self, expected_markers: Simd<u8, 2>) -> Result<MarLen> {
+        if !self.within_bound(MARKER_BYTES) {
+            return Err(anyhow!("out of bounds cursor: {}", self.cursor));
+        }
+
         let marker = u8x2::from_slice(&self.mmap[self.cursor..self.cursor + MARKER_BYTES]);
         if !marker.simd_eq(expected_markers).all() {
             return Err(anyhow!("expected markers and markers found do not align."));
@@ -117,14 +121,13 @@ impl JFIFReader {
     fn find_markers(&mut self, expected: Simd<u8, 2>) -> Result<Vec<MarLen>> {
         const LANE_COUNT: usize = 64;
 
-        let mut temp_chunk = [0u8; LANE_COUNT];
-
         let mut marlens = vec![];
 
         while self.cursor < self.mmap.len() - MARKER_BYTES {
             let end = (self.cursor + LANE_COUNT).min(self.mmap.len() - MARKER_BYTES);
             let len = end - self.cursor;
 
+            let mut temp_chunk = [0u8; LANE_COUNT];
             temp_chunk[..len].copy_from_slice(&self.mmap[self.cursor..end]);
             let simd_chunk = u8x64::from_array(temp_chunk);
 

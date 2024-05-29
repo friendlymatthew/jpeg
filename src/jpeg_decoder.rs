@@ -85,6 +85,7 @@ impl JpegDecoder {
     }
 
     fn decode_quant_table_information(&self) -> Result<([u8; 2], [u8; 2])> {
+        debug_assert_eq!(self.qt_marlen.len(), 2);
         let qt_informations: Simd<u8, 2> = Simd::from_slice(
             &self
                 .qt_marlen
@@ -107,8 +108,6 @@ impl JpegDecoder {
     }
 
     fn decode_quant_table(&self) -> Result<Vec<QuantTable>> {
-        debug_assert_eq!(self.qt_marlen.len(), 2);
-
         let mut tables = vec![];
 
         let (qt_ids, qt_precisions) = self.decode_quant_table_information()?;
@@ -363,6 +362,7 @@ impl JpegDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::huffman_tree::TableType;
     use crate::jfif_reader::JFIFReader;
     use memmap::Mmap;
     use std::fs::{File, OpenOptions};
@@ -403,13 +403,36 @@ mod tests {
     fn setup() {
         INIT.call_once(|| {
             let data = vec![
-                0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x07, b'J', b'F', b'I', b'F', 0x00, 0xFF, 0xC0, 0x00,
-                0x11, 0x08, 0x00, 0x02, 0x00, 0x06, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03,
-                0x11, 0x01, 0xFF, 0xDA, 0x00, 0x0C, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00,
-                0x3F, 0x00, // end of sos
-                0x00, // this should be the start of image data
-                0x00, 0xFF, 0xD9,
+                0xFF, 0xD8, // SOI
+                0xFF, 0xE0, // APP0
+                0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0x01, 0x01, 0x01, 0x00, 0x48, 0x00, 0x48,
+                0x00, 0x00, // 16
+                0xFF, 0xDB, // QT 1
+                0x00, 0x03, 0x00, 0xFF, 0xDB, // QT 2
+                0x00, 0x03, 0x00, 0xFF, 0xC0, // START OF FRAME
+                0x00, 0x11, 0x08, 0x00, 0x02, 0x00, 0x06, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01,
+                0x03, 0x11, 0x01, // 17
+                0xFF, 0xC4, // HUFFMAN 1 39
+                0x00, 0x15, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, // 21
+                0xFF, 0xC4, // HUFFMAN 2 62
+                0x00, 0x19, 0x10, 0x01, 0x00, 0x02, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x08, 0x38, 0x88, 0xB6, // 25
+                0xFF, 0xC4, // HUFFMAN 3 89
+                0x00, 0x15, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x0Aa, // 21
+                0xFF, 0xC4, // HUFFMAN 4 112
+                0x00, 0x1C, 0x11, 0x00, 0x01, 0x03, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x07, 0xB8, 0x09, 0x38, 0x39, 0x76,
+                0x78, // 28
+                0xFF, 0xDA, // START OF SCAN
+                0x00, 0x0C, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x3F,
+                0x00, // three bytes that we skip in sos
+                0xFF, // this should be the start of image data
+                0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x02, 0x04, b'h', 0x02, 0xFF, 0xD9,
             ];
+
+            println!("length of test data: {}", data.len());
 
             let mut file = OpenOptions::new()
                 .write(true)
@@ -429,7 +452,7 @@ mod tests {
         let mmap = unsafe { Mmap::map(&file)? };
 
         let mut jpeg_reader = JFIFReader { mmap, cursor: 0 };
-        let decoder = jpeg_reader.decoder()?;
+        let image = jpeg_reader.decoder()?.decode()?;
 
         let FrameData {
             precision,
@@ -437,7 +460,7 @@ mod tests {
             image_width,
             component_type,
             components,
-        } = decoder.decode_start_of_frame()?;
+        } = image.start_of_frame;
         assert_eq!(precision, Precision::EightBit);
         assert_eq!(image_width, 6);
         assert_eq!(image_height, 2);
@@ -468,10 +491,27 @@ mod tests {
             components
         );
 
-        let (scan_data, start_of_index) = decoder.decode_start_of_scan()?;
+        let huffman_trees = image.huffman_trees;
+        assert_eq!(huffman_trees.len(), 4);
+        assert_eq!(
+            huffman_trees
+                .iter()
+                .map(|ht| { ht.h_type })
+                .collect::<Vec<_>>(),
+            vec![TableType::DC, TableType::AC, TableType::DC, TableType::AC,]
+        );
 
-        assert_eq!(start_of_index, 44);
-        assert_eq!(scan_data.len(), 3);
+        assert_eq!(
+            huffman_trees
+            .iter()
+            .map(|ht| {
+                ht.h_id
+            }).collect::<Vec<_>>(),
+            vec![
+                0, 0, 1, 1
+            ]
+        );
+
 
         Ok(())
     }

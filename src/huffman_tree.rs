@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 use std::ptr::NonNull;
 
 /// https://www.youtube.com/watch?v=wLoWd2KyUro
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TableType {
     AC = 1,
     DC = 0,
@@ -88,9 +89,10 @@ impl HuffmanNode {
 
 type NPtr = Option<NonNull<HuffmanNode>>;
 
+#[derive(Debug)]
 pub struct HuffmanTree {
-    h_type: TableType,
-    h_id: usize,
+    pub(crate) h_type: TableType,
+    pub(crate) h_id: usize,
     root: NPtr,
     _woof: PhantomData<HuffmanNode>,
 }
