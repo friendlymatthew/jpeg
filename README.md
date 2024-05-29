@@ -1,5 +1,5 @@
-# simd-jpeg
-simd-jpeg implements .jpeg algorithms in simd.
+# jpeg
+jpeg implements .jpeg algorithms in simd.
 
 <br />
 
