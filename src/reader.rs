@@ -1,11 +1,11 @@
 use crate::decoder::JFIFDecoder;
+use crate::marker::{Marker, MarkerType};
 use anyhow::{anyhow, Result};
 use memmap::Mmap;
 use rayon::iter::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::simd::prelude::*;
-use crate::marker::{Marker, MarkerType};
 
 pub struct JFIFReader {
     pub mmap: Mmap,

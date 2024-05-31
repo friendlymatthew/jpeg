@@ -382,8 +382,6 @@ pub(crate) enum Marker {
     RES191 = 0xFFBF,
 }
 
-
-
 impl Marker {
     pub(crate) const SIZE: usize = 2;
     pub fn all() -> HashSet<Marker> {

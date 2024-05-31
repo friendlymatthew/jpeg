@@ -3,10 +3,10 @@
 extern crate core;
 
 mod component;
-mod jpeg_decoder;
-mod quant_tables;
 mod decoder;
-mod reader;
-mod marker;
 mod features;
 mod huffman_table;
+mod jpeg_decoder;
+mod marker;
+mod quant_tables;
+mod reader;

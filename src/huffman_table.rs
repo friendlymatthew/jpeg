@@ -15,11 +15,10 @@ impl HuffmanClass {
         match ht_class {
             1 => HuffmanClass::AC,
             0 => HuffmanClass::DC,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
-
 
 #[derive(Debug, Eq)]
 pub(crate) struct HeapItem {
@@ -60,8 +59,6 @@ impl PartialEq for HeapItem {
     }
 }
 
-
-
 pub(crate) struct HuffmanNode {
     pub(crate) code: u8,
     pub(crate) freq: usize,
@@ -89,7 +86,6 @@ impl HuffmanNode {
 }
 
 pub(crate) type NPtr = Option<NonNull<HuffmanNode>>;
-
 
 #[derive(Debug)]
 pub struct HuffmanTree {
@@ -170,8 +166,6 @@ impl Drop for HuffmanTree {
         HuffmanTree::autumn(self.root)
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
