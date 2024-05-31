@@ -1,6 +1,6 @@
 use std::simd::prelude::*;
 
-pub(crate) fn realign_rgb_data(src: &[u8], num: usize) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+pub fn realign_rgb_data(src: &[u8], num: usize) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     let mut r: Vec<u8> = vec![0; num];
     let mut g: Vec<u8> = vec![0; num];
     let mut b: Vec<u8> = vec![0; num];
@@ -14,7 +14,7 @@ pub(crate) fn realign_rgb_data(src: &[u8], num: usize) -> (Vec<u8>, Vec<u8>, Vec
     (r, g, b)
 }
 
-pub(crate) fn rgb_to_grayscale(src: &[u8], dst: &mut [u8], num: usize) {
+pub fn rgb_to_grayscale(src: &[u8], dst: &mut [u8], num: usize) {
     let simd_size = 64;
 
     let (r, g, b) = realign_rgb_data(src, num);

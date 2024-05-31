@@ -8,7 +8,7 @@ pub(crate) enum Precision {
 }
 
 impl Precision {
-    pub(crate) fn from(b: u8) -> Self {
+    pub(crate) fn decode(b: u8) -> Self {
         match b {
             0 => Precision::EightBit,
             1 => Precision::SixteenBit,
@@ -49,7 +49,7 @@ impl QuantTable {
                 1 => Chrominance,
                 _ => unreachable!(),
             },
-            precision: Precision::from(qt_precision),
+            precision: Precision::decode(qt_precision),
             data: qt_data,
         }
     }

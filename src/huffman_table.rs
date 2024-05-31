@@ -5,20 +5,21 @@ use std::ptr::NonNull;
 
 /// https://www.youtube.com/watch?v=wLoWd2KyUro
 #[derive(Debug, PartialEq, Copy, Clone)]
-pub enum TableType {
+pub enum HuffmanClass {
     AC = 1,
     DC = 0,
 }
 
-impl TableType {
-    fn from(ht_type: u8) -> Self {
-        match ht_type {
-            1 => TableType::AC,
-            0 => TableType::DC,
-            _ => unreachable!(),
+impl HuffmanClass {
+    fn from(ht_class: u8) -> Self {
+        match ht_class {
+            1 => HuffmanClass::AC,
+            0 => HuffmanClass::DC,
+            _ => unreachable!()
         }
     }
 }
+
 
 #[derive(Debug, Eq)]
 pub(crate) struct HeapItem {
@@ -59,7 +60,9 @@ impl PartialEq for HeapItem {
     }
 }
 
-struct HuffmanNode {
+
+
+pub(crate) struct HuffmanNode {
     pub(crate) code: u8,
     pub(crate) freq: usize,
     pub(crate) left: NPtr,
@@ -67,7 +70,7 @@ struct HuffmanNode {
 }
 
 impl HuffmanNode {
-    fn new_node(code: u8, freq: usize) -> Self {
+    pub(crate) fn new_node(code: u8, freq: usize) -> Self {
         HuffmanNode {
             code,
             freq,
@@ -85,18 +88,19 @@ impl HuffmanNode {
     }
 }
 
-type NPtr = Option<NonNull<HuffmanNode>>;
+pub(crate) type NPtr = Option<NonNull<HuffmanNode>>;
+
 
 #[derive(Debug)]
 pub struct HuffmanTree {
-    pub(crate) h_type: TableType,
-    pub(crate) h_id: usize,
+    pub(crate) class: HuffmanClass,
+    pub(crate) destination_id: usize,
     root: NPtr,
     _woof: PhantomData<HuffmanNode>,
 }
 
 impl HuffmanTree {
-    pub fn from(ht_type: u8, ht_id: usize, code_freqs: Vec<(u8, usize)>) -> Self {
+    pub fn from(class: u8, destination_id: usize, code_freqs: Vec<(u8, usize)>) -> Self {
         let mut min_heap = BinaryHeap::new();
 
         for (code, freq) in code_freqs {
@@ -140,8 +144,8 @@ impl HuffmanTree {
 
         HuffmanTree {
             root,
-            h_id: ht_id,
-            h_type: TableType::from(ht_type),
+            class: HuffmanClass::from(class),
+            destination_id,
             _woof: PhantomData,
         }
     }
@@ -166,6 +170,8 @@ impl Drop for HuffmanTree {
         HuffmanTree::autumn(self.root)
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {
