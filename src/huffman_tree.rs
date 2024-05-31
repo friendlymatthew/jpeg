@@ -20,12 +20,6 @@ impl TableType {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct CodeFreq {
-    pub(crate) code: u8,
-    pub(crate) freq: usize,
-}
-
 #[derive(Debug, Eq)]
 pub(crate) struct HeapItem {
     freq: usize,
@@ -66,24 +60,28 @@ impl PartialEq for HeapItem {
 }
 
 struct HuffmanNode {
-    internal: usize,
-    leaf: CodeFreq,
-    left: NPtr,
-    right: NPtr,
+    pub(crate) code: u8,
+    pub(crate) freq: usize,
+    pub(crate) left: NPtr,
+    pub(crate) right: NPtr,
 }
 
 impl HuffmanNode {
-    fn new_leaf(code_freq: CodeFreq) -> Self {
+    fn new_node(code: u8, freq: usize) -> Self {
         HuffmanNode {
-            internal: u8::MAX as usize,
-            leaf: code_freq,
+            code,
+            freq,
             left: None,
             right: None,
         }
     }
 
-    fn is_internal(&self) -> bool {
-        self.internal == u8::MAX as usize
+    fn is_leaf(ptr: NPtr) -> bool {
+        if let Some(node) = ptr {
+            unsafe { (*node.as_ptr()).code != u8::MAX }
+        } else {
+            unreachable!()
+        }
     }
 }
 
@@ -98,13 +96,12 @@ pub struct HuffmanTree {
 }
 
 impl HuffmanTree {
-    pub fn from(ht_type: u8, ht_id: usize, code_freqs: Vec<CodeFreq>) -> Self {
+    pub fn from(ht_type: u8, ht_id: usize, code_freqs: Vec<(u8, usize)>) -> Self {
         let mut min_heap = BinaryHeap::new();
 
-        for code_freq in code_freqs {
-            let freq = code_freq.freq;
+        for (code, freq) in code_freqs {
             let new_node = unsafe {
-                NonNull::new_unchecked(Box::into_raw(Box::new(HuffmanNode::new_leaf(code_freq))))
+                NonNull::new_unchecked(Box::into_raw(Box::new(HuffmanNode::new_node(code, freq))))
             };
 
             min_heap.push(HeapItem::from(freq, Some(new_node)))
@@ -122,37 +119,51 @@ impl HuffmanTree {
             match (left, right) {
                 (Some(left_item), Some(right_item)) => {
                     let sum_freq = left_item.freq + right_item.freq;
-
                     let new_node = unsafe {
                         NonNull::new_unchecked(Box::into_raw(Box::new(HuffmanNode {
-                            internal: sum_freq,
-                            leaf: CodeFreq {
-                                code: u8::MAX,
-                                freq: 0,
-                            },
-                            left: left_item.node,
+                            freq: sum_freq,
+                            code: u8::MAX,
                             right: right_item.node,
+                            left: left_item.node,
                         })))
                     };
 
                     min_heap.push(HeapItem::from(sum_freq, Some(new_node)))
                 }
-                _ => break,
+                _ => unreachable!(),
             }
         }
 
-        let root = min_heap.pop();
-        debug_assert!(root.is_some());
-        let HeapItem { node: root, .. } = root.unwrap();
+        let root_item = min_heap.pop();
+        debug_assert!(root_item.is_some());
+        let HeapItem { node: root, .. } = root_item.unwrap();
 
-        let mut tree = HuffmanTree {
+        HuffmanTree {
             root,
             h_id: ht_id,
             h_type: TableType::from(ht_type),
             _woof: PhantomData,
-        };
+        }
+    }
 
-        tree
+    fn autumn(ptr: NPtr) {
+        if let Some(node) = ptr {
+            unsafe {
+                let left = (*node.as_ptr()).left;
+                let right = (*node.as_ptr()).right;
+
+                HuffmanTree::autumn(left);
+                HuffmanTree::autumn(right);
+
+                let _ = Box::from_raw(node.as_ptr());
+            }
+        }
+    }
+}
+
+impl Drop for HuffmanTree {
+    fn drop(&mut self) {
+        HuffmanTree::autumn(self.root)
     }
 }
 
@@ -162,6 +173,22 @@ mod tests {
     use anyhow::Result;
 
     #[test]
+    fn test_tree_construction() -> Result<()> {
+        let code_freqs = vec![(1, 5), (2, 9), (3, 12), (4, 13), (5, 16), (6, 45)];
+
+        let tree = HuffmanTree::from(1, 1, code_freqs);
+
+        assert!(tree.root.is_some());
+        let tree = tree.root.unwrap();
+
+        assert!(!HuffmanNode::is_leaf(Some(tree)));
+        assert!(unsafe { (*tree.as_ptr()).left.is_some() });
+        assert!(unsafe { (*tree.as_ptr()).right.is_some() });
+
+        Ok(())
+    }
+
+    #[test]
     fn test_min_heap() -> Result<()> {
         let mut min_heap = BinaryHeap::new();
 
@@ -169,11 +196,8 @@ mod tests {
             min_heap.push(HeapItem {
                 freq: i,
                 node: Some(unsafe {
-                    NonNull::new_unchecked(Box::into_raw(Box::new(HuffmanNode::new_leaf(
-                        CodeFreq {
-                            code: i as u8,
-                            freq: i,
-                        },
+                    NonNull::new_unchecked(Box::into_raw(Box::new(HuffmanNode::new_node(
+                        i as u8, i,
                     ))))
                 }),
             })

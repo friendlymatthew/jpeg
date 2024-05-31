@@ -20,8 +20,6 @@ pub(crate) struct Image {
 impl Image {
     pub(crate) fn build(&self) {
         let FrameData {
-            image_width,
-            image_height,
             ..
         } = self.start_of_frame;
 
@@ -33,7 +31,6 @@ impl Image {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::jfif_reader::JFIFReader;
     use crate::jpeg_decoder::JpegDecoder;
     use memmap::Mmap;

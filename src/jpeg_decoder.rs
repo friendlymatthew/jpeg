@@ -1,12 +1,12 @@
 use crate::component::{Component, ComponentType, FrameData, ScanData};
-use crate::huffman_tree::{CodeFreq, HuffmanTree};
+use crate::huffman_tree::HuffmanTree;
 use crate::image::Image;
-use crate::jfif_reader::{MarLen, MARKER_BYTES};
+use crate::jfif_reader::{MarLen};
 use crate::quant_tables::{Precision, QuantTable};
 use anyhow::{anyhow, Result};
 use std::iter;
 use std::simd::prelude::*;
-use std::simd::LaneCount;
+use crate::marker::Marker;
 
 const INFORMATION_BYTES: usize = 1;
 const HUFFMAN_SYM_BYTES: usize = 16;
@@ -113,9 +113,9 @@ impl JpegDecoder {
         let (qt_ids, qt_precisions) = self.decode_quant_table_information()?;
 
         for (idx, marlen) in self.qt_marlen.iter().enumerate() {
-            let MarLen { offset, length } = marlen;
+            let MarLen { offset, .. } = marlen;
 
-            let mut current_offset = offset + MARKER_BYTES;
+            let current_offset = offset + Marker::SIZE;
             debug_assert!(self.buffer.len() > current_offset + QUANTIZATION_TABLE_BYTES);
 
             let qt_data: Simd<u8, QUANTIZATION_TABLE_BYTES> = Simd::from_slice(
@@ -161,8 +161,8 @@ impl JpegDecoder {
             let code_freq = self.buffer[current_offset..current_offset + code_len]
                 .iter()
                 .zip(flat_lengths.iter())
-                .map(|(&code, &freq)| CodeFreq { code, freq })
-                .collect::<Vec<CodeFreq>>();
+                .map(|(&code, &freq)| (code, freq))
+                .collect::<Vec<_>>();
 
             let tree = HuffmanTree::from(ht_types[idx], ht_numbers[idx] as usize, code_freq);
             trees.push(tree);
@@ -222,7 +222,7 @@ impl JpegDecoder {
     }
 
     fn decode_start_of_frame(&self) -> Result<FrameData> {
-        let MarLen { offset, length } = self.sof_marlen;
+        let MarLen { offset, .. } = self.sof_marlen;
         let mut current_offset = offset;
 
         let precision = Precision::parse(self.buffer[current_offset]);
@@ -309,7 +309,7 @@ impl JpegDecoder {
     }
 
     fn sanitize_image_data(&self, start_of_image_data_index: usize) -> Result<Vec<u8>> {
-        let end_of_image_data_index = self.buffer.len() - MARKER_BYTES - 1;
+        let end_of_image_data_index = self.buffer.len() - Marker::SIZE - 1;
         let image_length = end_of_image_data_index - start_of_image_data_index;
 
         let mut current_index = start_of_image_data_index;
@@ -318,8 +318,8 @@ impl JpegDecoder {
         let mut temp_chunk = [0u8; LANE_COUNT];
         let mut result = Vec::with_capacity(image_length);
 
-        while current_index < self.buffer.len() - MARKER_BYTES {
-            let end = (current_index + LANE_COUNT).min(self.buffer.len() - MARKER_BYTES);
+        while current_index < self.buffer.len() - Marker::SIZE {
+            let end = (current_index + LANE_COUNT).min(self.buffer.len() - Marker::SIZE);
             let len = end - current_index;
 
             temp_chunk[..len].copy_from_slice(&self.buffer[current_index..end]);
@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn test_decode_mike() -> Result<()> {
         let decoder = mike_decoder()?;
-        let huffman_trees = decoder.decode_huffman_trees()?;
+        let _huffman_trees = decoder.decode_huffman_trees()?;
         let FrameData {
             image_width,
             image_height,
@@ -426,11 +426,10 @@ mod tests {
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x07, 0xB8, 0x09, 0x38, 0x39, 0x76,
                 0x78, // 28
                 0xFF, 0xDA, // START OF SCAN
-                0x00, 0x0C, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11,
-                0x00, 0x3F, 0x00, // three bytes that we skip in sos
+                0x00, 0x0C, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x3F,
+                0x00, // three bytes that we skip in sos
                 0xFF, // this should be the start of image data
-                0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x02, 0x04, b'h', 0x02,
-                0xFF, 0xD9, // EOI
+                0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x02, 0x04, b'h', 0x02, 0xFF, 0xD9, // EOI
             ];
 
             println!("length of test data: {}", data.len());
@@ -504,22 +503,16 @@ mod tests {
 
         assert_eq!(
             huffman_trees
-            .iter()
-            .map(|ht| {
-                ht.h_id
-            }).collect::<Vec<_>>(),
-            vec![
-                0, 0, 1, 1
-            ]
+                .iter()
+                .map(|ht| { ht.h_id })
+                .collect::<Vec<_>>(),
+            vec![0, 0, 1, 1]
         );
 
         assert_eq!(
             image.data,
-            [
-                0xFF, 0x00, 0xFF, 0xFF, 0x02, 0x04, b'h', 0x02,
-            ].to_vec()
+            [0xFF, 0x00, 0xFF, 0xFF, 0x02, 0x04, b'h', 0x02,].to_vec()
         );
-
 
         Ok(())
     }

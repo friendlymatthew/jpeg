@@ -1,13 +1,12 @@
-use crate::image::Image;
 use crate::jpeg_decoder::JpegDecoder;
+use crate::marker::Marker;
 use anyhow::{anyhow, Result};
 use memmap::Mmap;
 use std::fs::File;
 use std::simd::prelude::*;
 
-pub const MARKER_BYTES: usize = 2;
 
-// Every marker length denotes a new section of data to process.
+// Every mod length denotes a new section of data to process.
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct MarLen {
     pub offset: usize,
@@ -41,53 +40,53 @@ impl JFIFReader {
     }
 
     fn parse_marlen(&mut self, expected_markers: Simd<u8, 2>) -> Result<MarLen> {
-        if !self.within_bound(MARKER_BYTES) {
+        if !self.within_bound(Marker::SIZE) {
             return Err(anyhow!("out of bounds cursor: {}", self.cursor));
         }
 
-        let marker = u8x2::from_slice(&self.mmap[self.cursor..self.cursor + MARKER_BYTES]);
+        let marker = u8x2::from_slice(&self.mmap[self.cursor..self.cursor + Marker::SIZE]);
         if !marker.simd_eq(expected_markers).all() {
             return Err(anyhow!("expected markers and markers found do not align."));
         }
-        self.cursor += MARKER_BYTES;
+        self.cursor += Marker::SIZE;
 
         let length = u16::from_be_bytes([self.mmap[self.cursor], self.mmap[self.cursor + 1]]);
-        self.cursor += MARKER_BYTES;
+        self.cursor += Marker::SIZE;
 
         return Ok(MarLen {
             offset: self.cursor,
-            length: length as usize - MARKER_BYTES,
+            length: length as usize - Marker::SIZE,
         });
     }
 
     fn check_prelude(&mut self) -> Result<()> {
-        // The JPEG File Interchange Format requires the APP0 marker right after the SOI marker.
-        let markers = u8x4::from_slice(&self.mmap[self.cursor..self.cursor + (MARKER_BYTES * 2)]);
-        self.cursor += MARKER_BYTES * 2;
+        // The JPEG File Interchange Format requires the APP0 mod right after the SOI mod.
+        let markers = u8x4::from_slice(&self.mmap[self.cursor..self.cursor + (Marker::SIZE * 2)]);
+        self.cursor += Marker::SIZE * 2;
 
         let expected_markers = u8x4::from_array([0xFF, 0xD8, 0xFF, 0xE0]);
         let mask_markers = markers.simd_eq(expected_markers);
 
         match mask_markers.all() {
             true => Ok(()),
-            false => Err(anyhow!("Expected the SOI marker and APP0 marker.")),
+            false => Err(anyhow!("Expected the SOI mod and APP0 mod.")),
         }
     }
 
     fn check_postlude(&mut self) -> Result<()> {
-        let eoi_marker = u8x2::from_slice(&self.mmap[self.mmap.len() - MARKER_BYTES..]);
+        let eoi_marker = u8x2::from_slice(&self.mmap[self.mmap.len() - Marker::SIZE..]);
         let expected = u8x2::from_array([0xFF, 0xD9]);
 
         match eoi_marker.simd_eq(expected).all() {
             true => Ok(()),
             false => Err(anyhow!(
-                "Expected the EOI marker to appear as the last two bytes in image data"
+                "Expected the EOI mod to appear as the last two bytes in image data"
             )),
         }
     }
 
     fn parse_headers(&mut self) -> Result<()> {
-        if !self.within_bound(MARKER_BYTES) {
+        if !self.within_bound(Marker::SIZE) {
             return Err(anyhow!(
                 "we've reached the eof, unable to parse header length"
             ));
@@ -95,7 +94,7 @@ impl JFIFReader {
 
         let length =
             u16::from_be_bytes([self.mmap[self.cursor], self.mmap[self.cursor + 1]]) as usize;
-        self.cursor += MARKER_BYTES;
+        self.cursor += Marker::SIZE;
 
         if !self.within_bound(length) {
             return Err(anyhow!("we've reached the eof, unable to seek past length"));
@@ -113,7 +112,7 @@ impl JFIFReader {
             return Err(anyhow!("identifier was not equal to expected"));
         }
 
-        self.cursor += length - MARKER_BYTES;
+        self.cursor += length - Marker::SIZE;
 
         Ok(())
     }
@@ -123,8 +122,8 @@ impl JFIFReader {
 
         let mut marlens = vec![];
 
-        while self.cursor < self.mmap.len() - MARKER_BYTES {
-            let end = (self.cursor + LANE_COUNT).min(self.mmap.len() - MARKER_BYTES);
+        while self.cursor < self.mmap.len() - Marker::SIZE {
+            let end = (self.cursor + LANE_COUNT).min(self.mmap.len() - Marker::SIZE);
             let len = end - self.cursor;
 
             let mut temp_chunk = [0u8; LANE_COUNT];
@@ -286,7 +285,7 @@ mod tests {
         assert!(sof_marker.is_ok());
         let sof_marker = sof_marker.unwrap();
 
-        assert_eq!(sof_marker.length, 17 - MARKER_BYTES);
+        assert_eq!(sof_marker.length, 17 - Marker::SIZE);
         println!("sos data is: {}, {}", sof_marker.offset, sof_marker.length);
 
         Ok(())
