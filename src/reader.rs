@@ -1,4 +1,4 @@
-use crate::decoder::JFIFDecoder;
+use crate::decoder::JpegDecoder;
 use crate::marker::{Marker, MarkerType};
 use anyhow::{anyhow, Result};
 use memmap::Mmap;
@@ -25,7 +25,7 @@ impl JFIFReader {
         JFIFReader::from_file(file)
     }
 
-    fn read(&mut self) -> Result<()> {
+    pub(crate) fn decoder(&mut self) -> Result<JpegDecoder> {
         let marker_marlen_map = self.scan_markers()?;
 
         /*
@@ -77,10 +77,7 @@ impl JFIFReader {
             Baseline process needs DCT, 4 Huffman tables,
          */
 
-        let mut decoder = JFIFDecoder::new(self.mmap.to_vec(), marker_marlen_map);
-        decoder.decode()?;
-
-        Ok(())
+        Ok(JpegDecoder::new(self.mmap.to_vec(), marker_marlen_map))
     }
 
     fn scan_markers(&mut self) -> Result<HashMap<Marker, Vec<(usize, usize)>>> {
@@ -138,24 +135,25 @@ impl JFIFReader {
                         Consider the two cases:
 
                         Segment Marker:
-                        [SOF][Segment .... (length) ....]
-                             | <- this is the marlen position
+                        [SOF][Length][Segment .... (length) ....]
+                                     | <- this is the marlen position
 
                         Standalone Marker:
                         [SOI][....]
                              | <- this is the marlen position
 
                          */
-                        let segment_marlen = (
-                            segment_offset,
-                            match low_marker.is_segment() {
-                                MarkerType::Segment => u16::from_be_bytes([
+                        let segment_marlen = match low_marker.is_segment() {
+                            MarkerType::Segment => (
+                                segment_offset + 2,
+                                u16::from_be_bytes([
                                     self.mmap[segment_offset],
                                     self.mmap[segment_offset + 1],
-                                ]) as usize,
-                                MarkerType::StandAlone => 0,
-                            },
-                        );
+                                ]) as usize
+                                    - 2,
+                            ),
+                            MarkerType::StandAlone => (segment_offset, 0),
+                        };
 
                         local_marker_marlen_map.push((*low_marker, segment_marlen))
                     }
@@ -187,8 +185,8 @@ impl JFIFReader {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
+    use std::fs::OpenOptions;
     #[test]
     fn validate_mike() -> Result<()> {
         let mut jfif_reader = JFIFReader {
@@ -196,8 +194,22 @@ mod tests {
             cursor: 0,
         };
 
-        let res = jfif_reader.read();
-        assert!(res.is_ok());
+        let decoder = jfif_reader.decoder();
+        assert!(decoder.is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn validate_mock() -> Result<()> {
+        let file = File::open("mock_jpeg_decode.bin")?;
+        let mmap = unsafe { Mmap::map(&file)? };
+
+        let mut jfif_reader = JFIFReader { mmap, cursor: 0 };
+
+        let marlen_map = jfif_reader.scan_markers()?;
+
+        println!("marlen map: {:?}", marlen_map);
 
         Ok(())
     }

@@ -189,6 +189,7 @@ pub(crate) enum Marker {
     // RESERVED MARKERS
     /// * For temporary private use in arithmetic coding
     TEM = 0x01,
+
     /// Reserved markers from 0x02 to 0xBF
     RES2 = 0xFF02,
     RES3 = 0xFF03,
