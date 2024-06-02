@@ -1,21 +1,23 @@
-use crate::component::{Component, ComponentType, FrameData, ScanData};
-use crate::entropy::Image;
-use crate::huffman_table::HuffmanTree;
-use crate::marker::Marker;
-use crate::quant_tables::{Precision, QuantTable};
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::iter;
 use std::simd::prelude::*;
+use crate::decoder::baseline_process::entropy::Image;
+use crate::decoder::component::{Component, ComponentType, FrameData, ScanData};
+use crate::entropy::huffman_table::HuffmanTree;
+use crate::interchange::marker::Marker;
+use crate::interchange::sample_precision::SamplePrecision;
+use crate::quantize::quantization_table::QuantTable;
 
 const INFORMATION_BYTES: usize = 1;
 const HUFFMAN_SYM_BYTES: usize = 16;
 
 pub const QUANTIZATION_TABLE_BYTES: usize = 64;
 
-type MarlenMap = HashMap<Marker, Vec<(usize, usize)>>;
+pub(crate) type Marlen = (usize, usize); // offset, length
+pub(crate) type MarlenMap = HashMap<Marker, Vec<Marlen>>;
 
-pub struct JpegDecoder {
+pub(crate) struct JpegDecoder {
     buffer: Vec<u8>,
     marlen_map: MarlenMap,
 }
@@ -226,7 +228,7 @@ impl JpegDecoder {
         let (offset, _) = sof_marlens[0];
         let mut current_offset = offset;
 
-        let precision = Precision::parse(self.buffer[current_offset]);
+        let precision = SamplePrecision::parse(self.buffer[current_offset]);
         current_offset += 1;
 
         let image_dim: Simd<u8, 4> =
@@ -363,12 +365,13 @@ impl JpegDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::huffman_table::HuffmanClass;
-    use crate::reader::JFIFReader;
     use memmap::Mmap;
     use std::fs::{File, OpenOptions};
     use std::io::Write;
     use std::sync::Once;
+    use crate::entropy::huffman_table::HuffmanClass;
+    use crate::interchange::Compression;
+    use crate::interchange::reader::JFIFReader;
 
     fn mike_decoder() -> Result<JpegDecoder> {
         let mut jfif_reader = JFIFReader {
@@ -376,7 +379,7 @@ mod tests {
             cursor: 0,
         };
 
-        Ok(jfif_reader.decoder()?)
+        Ok(jfif_reader.decoder(Compression::Baseline)?)
     }
 
     #[test]
@@ -453,7 +456,7 @@ mod tests {
         let mmap = unsafe { Mmap::map(&file)? };
 
         let mut jpeg_reader = JFIFReader { mmap, cursor: 0 };
-        let image = jpeg_reader.decoder()?.decode()?;
+        let image = jpeg_reader.decoder(Compression::Baseline)?.decode()?;
 
         let FrameData {
             precision,
@@ -462,7 +465,7 @@ mod tests {
             component_type,
             components,
         } = image.start_of_frame;
-        assert_eq!(precision, Precision::EightBit);
+        assert_eq!(precision, SamplePrecision::EightBit);
         assert_eq!(image_width, 6);
         assert_eq!(image_height, 2);
         assert_eq!(component_type, ComponentType::Color);

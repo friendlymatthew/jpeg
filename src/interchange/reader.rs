@@ -1,11 +1,12 @@
-use crate::decoder::JpegDecoder;
-use crate::marker::{Marker, MarkerType};
+use crate::interchange::marker::{Marker, MarkerType};
 use anyhow::{anyhow, Result};
 use memmap::Mmap;
 use rayon::iter::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::simd::prelude::*;
+use crate::decoder::baseline_process::decoder::JpegDecoder;
+use crate::interchange::Compression;
 
 pub struct JFIFReader {
     pub mmap: Mmap,
@@ -25,7 +26,7 @@ impl JFIFReader {
         JFIFReader::from_file(file)
     }
 
-    pub(crate) fn decoder(&mut self) -> Result<JpegDecoder> {
+    pub(crate) fn decoder(&mut self, compression: Compression) -> Result<JpegDecoder> {
         let marker_marlen_map = self.scan_markers()?;
 
         /*
@@ -71,12 +72,6 @@ impl JFIFReader {
             ));
         }
 
-        /*
-        Further validation can occur here, for instance:
-        By various coding processes:
-            Baseline process needs DCT, 4 Huffman tables,
-         */
-
         Ok(JpegDecoder::new(self.mmap.to_vec(), marker_marlen_map))
     }
 
@@ -103,7 +98,7 @@ impl JFIFReader {
 
             curr_chunk = curr_chunk.rotate_elements_left::<1>();
 
-            let mut visited_markers: Vec<_> = all_markers
+            let visited_markers: Vec<_> = all_markers
                 .par_iter()
                 .filter_map(|low_marker| {
                     let low_marker_mask = Simd::splat(*low_marker as u8);
@@ -194,7 +189,7 @@ mod tests {
             cursor: 0,
         };
 
-        let decoder = jfif_reader.decoder();
+        let decoder = jfif_reader.decoder(Compression::Baseline);
         assert!(decoder.is_ok());
 
         Ok(())

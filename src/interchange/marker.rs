@@ -386,7 +386,7 @@ pub(crate) enum Marker {
 impl Marker {
     pub(crate) const SIZE: usize = 2;
     pub fn all() -> HashSet<Marker> {
-        use crate::marker::Marker::*;
+        use crate::interchange::marker::Marker::*;
 
         HashSet::from([
             SOF0, SOF1, SOF2, SOF3, DHT, SOF5, SOF6, SOF7, JPG, SOF9, SOF10, SOF11, DAC, SOF13,

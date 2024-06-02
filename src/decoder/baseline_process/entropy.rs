@@ -1,7 +1,7 @@
-use crate::component::{FrameData, ScanData};
-use crate::huffman_table::HuffmanTree;
-use crate::quant_tables::QuantTable;
 use std::simd::Simd;
+use crate::decoder::component::{FrameData, ScanData};
+use crate::entropy::huffman_table::HuffmanTree;
+use crate::quantize::quantization_table::QuantTable;
 
 pub struct Block(Simd<u8, 64>);
 
@@ -30,10 +30,11 @@ impl Image {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::decoder::JpegDecoder;
-    use crate::reader::JFIFReader;
     use memmap::Mmap;
     use std::fs::File;
+    use crate::decoder::baseline_process::decoder::JpegDecoder;
+    use crate::interchange::Compression;
+    use crate::interchange::reader::JFIFReader;
 
     fn mike_decoder() -> anyhow::Result<JpegDecoder> {
         let mut jfif_reader = JFIFReader {
@@ -41,7 +42,7 @@ mod tests {
             cursor: 0,
         };
 
-        Ok(jfif_reader.decoder()?)
+        Ok(jfif_reader.decoder(Compression::Baseline)?)
     }
 
     #[test]

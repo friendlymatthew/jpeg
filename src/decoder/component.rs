@@ -1,8 +1,8 @@
-use crate::quant_tables::Precision;
+use crate::interchange::sample_precision::SamplePrecision;
 
 #[derive(Debug)]
 pub struct FrameData {
-    pub(crate) precision: Precision,
+    pub(crate) precision: SamplePrecision,
     pub(crate) image_height: usize, // in pixels
     pub(crate) image_width: usize,  //
     pub(crate) component_type: ComponentType,
