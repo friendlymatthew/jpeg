@@ -5,7 +5,7 @@ use rayon::iter::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::simd::prelude::*;
-use crate::decoder::baseline_process::decoder::JpegDecoder;
+use crate::decoder::dct_decoder::JpegDecoder;
 use crate::interchange::Compression;
 
 pub struct JFIFReader {
@@ -26,7 +26,7 @@ impl JFIFReader {
         JFIFReader::from_file(file)
     }
 
-    pub(crate) fn decoder(&mut self, compression: Compression) -> Result<JpegDecoder> {
+    pub(crate) fn decoder(&mut self, compression: Compression) -> Result<JpegDecoder>{
         let marker_marlen_map = self.scan_markers()?;
 
         /*
@@ -71,6 +71,15 @@ impl JFIFReader {
                 "End of Image marlen should be the first out of bounds index in image data"
             ));
         }
+
+        if compression == Compression::Baseline || compression == Compression::ExtendedDCT {
+            if !marker_marlen_map.contains_key(&Marker::DHT) {
+                return Err(anyhow!(
+                    "Unable to find huffman table markers"
+                ))
+            }
+        }
+
 
         Ok(JpegDecoder::new(self.mmap.to_vec(), marker_marlen_map))
     }
@@ -181,7 +190,6 @@ impl JFIFReader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::OpenOptions;
     #[test]
     fn validate_mike() -> Result<()> {
         let mut jfif_reader = JFIFReader {
@@ -195,17 +203,5 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn validate_mock() -> Result<()> {
-        let file = File::open("mock_jpeg_decode.bin")?;
-        let mmap = unsafe { Mmap::map(&file)? };
 
-        let mut jfif_reader = JFIFReader { mmap, cursor: 0 };
-
-        let marlen_map = jfif_reader.scan_markers()?;
-
-        println!("marlen map: {:?}", marlen_map);
-
-        Ok(())
-    }
 }

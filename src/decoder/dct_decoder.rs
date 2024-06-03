@@ -2,8 +2,9 @@ use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::iter;
 use std::simd::prelude::*;
-use crate::decoder::baseline_process::entropy::Image;
-use crate::decoder::component::{Component, ComponentType, FrameData, ScanData};
+use crate::interchange::jfif::JFIF;
+use crate::interchange::component::{Component, ComponentType, FrameData, ScanData};
+use crate::entropy::EntropyCoding;
 use crate::entropy::huffman_table::HuffmanTree;
 use crate::interchange::marker::Marker;
 use crate::interchange::sample_precision::SamplePrecision;
@@ -27,11 +28,23 @@ impl JpegDecoder {
         JpegDecoder { buffer, marlen_map }
     }
 
-    pub fn decode(&self) -> Result<Image> {
-        let huffman_trees = self.decode_huffman_trees()?;
+    pub fn decode(&self) -> Result<JFIF> {
+        let jfif = self.decode_jfif()?;
+
+        /*
+        The entropy decoder decodes the zig zag sequence of quantized dct coefficients.
+        After dequantization the DCT coefficients are transformed to an 8 x 8 block of samples by
+        the inverse DCT (IDCT).
+         */
+
+        Ok(jfif)
+    }
+
+    pub fn decode_jfif(&self) -> Result<JFIF> {
+        let entropy_coding= self.decode_huffman_trees()?;
         let quant_tables = self.decode_quant_table()?;
-        let start_of_frame = self.decode_start_of_frame()?;
-        let (start_of_scan, start_of_image_data_index) = self.decode_start_of_scan()?;
+        let frame_header= self.decode_start_of_frame()?;
+        let (scan_header, start_of_image_data_index) = self.decode_start_of_scan()?;
 
         println!(
             "image data without byte stuffing: {}, entire length of data: {}",
@@ -41,12 +54,12 @@ impl JpegDecoder {
 
         let image_data = self.sanitize_image_data(start_of_image_data_index)?;
 
-        Ok(Image {
+        Ok(JFIF {
             data: image_data,
-            huffman_trees,
+            entropy_coding: EntropyCoding::Huffman(entropy_coding),
             quant_tables,
-            start_of_frame,
-            start_of_scan,
+            frame_header,
+            scan_header
         })
     }
 
@@ -104,7 +117,7 @@ impl JpegDecoder {
         let (qt_ids, qt_precisions) = self.decode_quant_table_information()?;
 
         let qt_marlens = self.get_marker_segment(&Marker::DQT)?;
-        for (idx, (offset, length)) in qt_marlens.iter().enumerate() {
+        for (idx, (offset, _)) in qt_marlens.iter().enumerate() {
             let current_offset = offset + Marker::SIZE;
             debug_assert!(self.buffer.len() > current_offset + QUANTIZATION_TABLE_BYTES);
 
@@ -456,7 +469,7 @@ mod tests {
         let mmap = unsafe { Mmap::map(&file)? };
 
         let mut jpeg_reader = JFIFReader { mmap, cursor: 0 };
-        let image = jpeg_reader.decoder(Compression::Baseline)?.decode()?;
+        let jfif = jpeg_reader.decoder(Compression::Baseline)?.decode()?;
 
         let FrameData {
             precision,
@@ -464,7 +477,7 @@ mod tests {
             image_width,
             component_type,
             components,
-        } = image.start_of_frame;
+        } = jfif.frame_header;
         assert_eq!(precision, SamplePrecision::EightBit);
         assert_eq!(image_width, 6);
         assert_eq!(image_height, 2);
@@ -491,11 +504,15 @@ mod tests {
                     qt_table_id: 1
                 }
             ]
-            .to_vec(),
+                .to_vec(),
             components
         );
 
-        let huffman_trees = image.huffman_trees;
+        let huffman_trees = match jfif.entropy_coding {
+            EntropyCoding::Huffman(ht) => ht,
+            _ => unreachable!()
+        };
+
         assert_eq!(huffman_trees.len(), 4);
         assert_eq!(
             huffman_trees
@@ -519,7 +536,7 @@ mod tests {
         );
 
         assert_eq!(
-            image.data,
+            jfif.data,
             [0xFF, 0x00, 0xFF, 0xFF, 0x02, 0x04, b'h', 0x02,].to_vec()
         );
 

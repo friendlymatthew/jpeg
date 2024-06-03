@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::hash::Hash;
 use crate::entropy::EntropyCoding;
 use crate::interchange::marker::Marker;
 use sample_precision::SamplePrecision;
@@ -7,6 +6,8 @@ use anyhow::Result;
 pub(crate) mod marker;
 pub(crate) mod reader;
 pub(crate) mod sample_precision;
+pub(crate) mod jfif;
+pub(crate) mod component;
 
 
 pub(crate) enum Scan {
@@ -21,6 +22,7 @@ pub(crate) enum Operation {
     // Hierarchical
 }
 
+#[derive(PartialEq)]
 pub(crate) enum Compression {
     Baseline,
     ExtendedDCT,
@@ -58,7 +60,7 @@ impl Compression {
                 process_type: ProcessType::DCT,
                 precision: vec![SamplePrecision::EightBit],
                 operations: vec![Operation::SequentialDCT],
-                entropy_codings: vec![EntropyCoding::Huffman],
+                entropy_codings: vec![EntropyCoding::Huffman(vec![])],
                 num_ac_tables: 2,
                 num_dc_tables: 2,
                 scans: vec![Scan::Interleaved, Scan::NonInterleaved],
@@ -68,7 +70,7 @@ impl Compression {
                 process_type: ProcessType::DCT,
                 precision: vec![SamplePrecision::EightBit, SamplePrecision::SixteenBit],
                 operations: vec![Operation::SequentialDCT, Operation::ProgressiveDCT],
-                entropy_codings: vec![EntropyCoding::Huffman, EntropyCoding::Arithmetic],
+                entropy_codings: vec![EntropyCoding::Huffman(vec![]), EntropyCoding::Arithmetic(vec![])],
                 num_ac_tables: 4,
                 num_dc_tables: 4,
                 scans: vec![Scan::NonInterleaved, Scan::Interleaved],
