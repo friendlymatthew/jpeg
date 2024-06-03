@@ -1,69 +1,34 @@
+use crate::huffman_tree::HuffmanTree;
+use crate::marker::Marker;
+use crate::quantization_table::QuantTable;
+use crate::sample_precision::SamplePrecision;
+use crate::{Component, ComponentType, EncodingProcess, FrameHeader, ScanData};
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::iter;
 use std::simd::prelude::*;
-use crate::interchange::jfif::JFIF;
-use crate::interchange::component::{Component, ComponentType, FrameData, ScanData};
-use crate::entropy::EntropyCoding;
-use crate::entropy::huffman_table::HuffmanTree;
-use crate::interchange::marker::Marker;
-use crate::interchange::sample_precision::SamplePrecision;
-use crate::quantize::quantization_table::QuantTable;
-
-const INFORMATION_BYTES: usize = 1;
-const HUFFMAN_SYM_BYTES: usize = 16;
 
 pub const QUANTIZATION_TABLE_BYTES: usize = 64;
 
 pub(crate) type Marlen = (usize, usize); // offset, length
 pub(crate) type MarlenMap = HashMap<Marker, Vec<Marlen>>;
 
-pub(crate) struct JpegDecoder {
+pub(crate) struct Parser {
     buffer: Vec<u8>,
     marlen_map: MarlenMap,
+    encoding: EncodingProcess,
 }
 
-impl JpegDecoder {
-    pub fn new(buffer: Vec<u8>, marlen_map: MarlenMap) -> Self {
-        JpegDecoder { buffer, marlen_map }
+impl Parser {
+    pub fn new(buffer: Vec<u8>, marlen_map: MarlenMap, encoding: EncodingProcess) -> Self {
+        Parser {
+            buffer,
+            marlen_map,
+            encoding,
+        }
     }
 
-    pub fn decode(&self) -> Result<JFIF> {
-        let jfif = self.decode_jfif()?;
-
-        /*
-        The entropy decoder decodes the zig zag sequence of quantized dct coefficients.
-        After dequantization the DCT coefficients are transformed to an 8 x 8 block of samples by
-        the inverse DCT (IDCT).
-         */
-
-        Ok(jfif)
-    }
-
-    pub fn decode_jfif(&self) -> Result<JFIF> {
-        let entropy_coding= self.decode_huffman_trees()?;
-        let quant_tables = self.decode_quant_table()?;
-        let frame_header= self.decode_start_of_frame()?;
-        let (scan_header, start_of_image_data_index) = self.decode_start_of_scan()?;
-
-        println!(
-            "image data without byte stuffing: {}, entire length of data: {}",
-            self.buffer.len() - start_of_image_data_index,
-            self.buffer.len()
-        );
-
-        let image_data = self.sanitize_image_data(start_of_image_data_index)?;
-
-        Ok(JFIF {
-            data: image_data,
-            entropy_coding: EntropyCoding::Huffman(entropy_coding),
-            quant_tables,
-            frame_header,
-            scan_header
-        })
-    }
-
-    fn decode_huffman_information(&self) -> Result<([u8; 4], [u8; 4])> {
+    fn parse_huffman_information(&self) -> Result<([u8; 4], [u8; 4])> {
         let huffman_marlen = self.get_marker_segment(&Marker::DHT)?;
 
         let ht_informations: Simd<u8, 4> = Simd::from_slice(
@@ -87,7 +52,7 @@ impl JpegDecoder {
         Ok((ht_types, ht_numbers))
     }
 
-    fn decode_quant_table_information(&self) -> Result<([u8; 2], [u8; 2])> {
+    fn parse_quant_table_information(&self) -> Result<([u8; 2], [u8; 2])> {
         let qt_marlens = self.get_marker_segment(&Marker::DQT)?;
         debug_assert_eq!(qt_marlens.len(), 2);
 
@@ -111,10 +76,10 @@ impl JpegDecoder {
         Ok((qt_ids, qt_precisions))
     }
 
-    fn decode_quant_table(&self) -> Result<Vec<QuantTable>> {
+    pub(crate) fn parse_quant_table(&self) -> Result<Vec<QuantTable>> {
         let mut tables = vec![];
 
-        let (qt_ids, qt_precisions) = self.decode_quant_table_information()?;
+        let (qt_ids, qt_precisions) = self.parse_quant_table_information()?;
 
         let qt_marlens = self.get_marker_segment(&Marker::DQT)?;
         for (idx, (offset, _)) in qt_marlens.iter().enumerate() {
@@ -139,22 +104,22 @@ impl JpegDecoder {
             .ok_or(anyhow!("failed to get marker"))?)
     }
 
-    fn decode_huffman_trees(&self) -> Result<Vec<HuffmanTree>> {
+    pub(crate) fn parse_huffman_trees(&self) -> Result<Vec<HuffmanTree>> {
         let huffman_marlens = self.get_marker_segment(&Marker::DHT)?;
         debug_assert_eq!(huffman_marlens.len(), 4);
 
         let mut trees = vec![];
 
-        let (ht_types, ht_numbers) = self.decode_huffman_information()?;
+        let (ht_types, ht_numbers) = self.parse_huffman_information()?;
 
         for (idx, (offset, length)) in huffman_marlens.iter().enumerate() {
-            let mut current_offset = offset + INFORMATION_BYTES;
+            let mut current_offset = offset + 1;
 
-            if self.buffer.len() < current_offset + HUFFMAN_SYM_BYTES {
+            if self.buffer.len() < current_offset + 16 {
                 return Err(anyhow!("Not enough data to extract symbol table"));
             }
 
-            let sym_table = &self.buffer[current_offset..current_offset + HUFFMAN_SYM_BYTES];
+            let sym_table = &self.buffer[current_offset..current_offset + 16];
 
             let mut flat_lengths = vec![];
 
@@ -162,7 +127,7 @@ impl JpegDecoder {
                 flat_lengths.extend(iter::repeat(idx + 1).take(*mult as usize));
             }
 
-            current_offset += HUFFMAN_SYM_BYTES;
+            current_offset += 16;
 
             let code_len = (offset + length) - current_offset;
             debug_assert_eq!(current_offset + code_len, offset + length);
@@ -180,7 +145,7 @@ impl JpegDecoder {
         Ok(trees)
     }
 
-    fn decode_start_of_scan(&self) -> Result<(Vec<ScanData>, usize)> {
+    pub(crate) fn parse_start_of_scan(&self) -> Result<(Vec<ScanData>, usize)> {
         let sos_marlens = self.get_marker_segment(&Marker::SOS)?;
         debug_assert_eq!(sos_marlens.len(), 1);
 
@@ -234,7 +199,7 @@ impl JpegDecoder {
         Ok((scan_data, current_offset))
     }
 
-    fn decode_start_of_frame(&self) -> Result<FrameData> {
+    pub(crate) fn parse_start_of_frame(&self) -> Result<FrameHeader> {
         let sof_marlens = self.get_marker_segment(&Marker::SOF0)?;
         debug_assert_eq!(sof_marlens.len(), 1);
 
@@ -315,7 +280,7 @@ impl JpegDecoder {
             }
         }
 
-        Ok(FrameData {
+        Ok(FrameHeader {
             precision,
             image_height,
             image_width,
@@ -324,7 +289,7 @@ impl JpegDecoder {
         })
     }
 
-    fn sanitize_image_data(&self, start_of_image_data_index: usize) -> Result<Vec<u8>> {
+    pub(crate) fn parse_image_data(&self, start_of_image_data_index: usize) -> Result<Vec<u8>> {
         let end_of_image_data_index = self.buffer.len() - Marker::SIZE - 1;
         let image_length = end_of_image_data_index - start_of_image_data_index;
 
@@ -378,34 +343,35 @@ impl JpegDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::decoder::Decoder;
+    use crate::huffman_tree::HuffmanClass;
+    use crate::{Component, ComponentType, FrameHeader};
     use memmap::Mmap;
     use std::fs::{File, OpenOptions};
     use std::io::Write;
     use std::sync::Once;
-    use crate::entropy::huffman_table::HuffmanClass;
-    use crate::interchange::Compression;
-    use crate::interchange::reader::JFIFReader;
 
-    fn mike_decoder() -> Result<JpegDecoder> {
-        let mut jfif_reader = JFIFReader {
+    fn mike_parser() -> Result<Parser> {
+        let mut decoder = Decoder {
             mmap: unsafe { Mmap::map(&File::open("mike.jpg")?)? },
             cursor: 0,
+            encoding: EncodingProcess::BaselineDCT,
         };
 
-        Ok(jfif_reader.decoder(Compression::Baseline)?)
+        Ok(decoder.setup()?)
     }
 
     #[test]
-    fn test_decode_mike() -> Result<()> {
-        let decoder = mike_decoder()?;
-        let _huffman_trees = decoder.decode_huffman_trees()?;
-        let FrameData {
+    fn test_parse_mike() -> Result<()> {
+        let parser = mike_parser()?;
+        let _huffman_trees = parser.parse_huffman_trees()?;
+        let FrameHeader {
             image_width,
             image_height,
             ..
-        } = decoder.decode_start_of_frame()?;
+        } = parser.parse_start_of_frame()?;
 
-        let qt_tables = decoder.decode_quant_table()?;
+        let qt_tables = parser.parse_quant_table()?;
 
         assert_eq!(image_width, 640);
         assert_eq!(image_height, 763);
@@ -468,16 +434,20 @@ mod tests {
         let file = File::open("mock_jpeg_decode.bin")?;
         let mmap = unsafe { Mmap::map(&file)? };
 
-        let mut jpeg_reader = JFIFReader { mmap, cursor: 0 };
-        let jfif = jpeg_reader.decoder(Compression::Baseline)?.decode()?;
+        let mut decoder = Decoder {
+            mmap,
+            cursor: 0,
+            encoding: EncodingProcess::BaselineDCT,
+        };
+        let parser = decoder.setup()?;
 
-        let FrameData {
+        let FrameHeader {
             precision,
             image_height,
             image_width,
             component_type,
             components,
-        } = jfif.frame_header;
+        } = parser.parse_start_of_frame()?;
         assert_eq!(precision, SamplePrecision::EightBit);
         assert_eq!(image_width, 6);
         assert_eq!(image_height, 2);
@@ -504,15 +474,11 @@ mod tests {
                     qt_table_id: 1
                 }
             ]
-                .to_vec(),
+            .to_vec(),
             components
         );
 
-        let huffman_trees = match jfif.entropy_coding {
-            EntropyCoding::Huffman(ht) => ht,
-            _ => unreachable!()
-        };
-
+        let huffman_trees = parser.parse_huffman_trees()?;
         assert_eq!(huffman_trees.len(), 4);
         assert_eq!(
             huffman_trees
@@ -535,8 +501,10 @@ mod tests {
             vec![0, 0, 1, 1]
         );
 
+        let (_, s_idx) = parser.parse_start_of_scan()?;
+
         assert_eq!(
-            jfif.data,
+            parser.parse_image_data(s_idx)?,
             [0xFF, 0x00, 0xFF, 0xFF, 0x02, 0x04, b'h', 0x02,].to_vec()
         );
 

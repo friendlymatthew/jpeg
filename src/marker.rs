@@ -1,3 +1,4 @@
+use crate::{EncodingProcess, EntropyCoding};
 use std::collections::HashSet;
 
 pub(crate) enum MarkerType {
@@ -386,7 +387,7 @@ pub(crate) enum Marker {
 impl Marker {
     pub(crate) const SIZE: usize = 2;
     pub fn all() -> HashSet<Marker> {
-        use crate::interchange::marker::Marker::*;
+        use crate::marker::Marker::*;
 
         HashSet::from([
             SOF0, SOF1, SOF2, SOF3, DHT, SOF5, SOF6, SOF7, JPG, SOF9, SOF10, SOF11, DAC, SOF13,
@@ -445,6 +446,28 @@ impl Marker {
             | Marker::EOI
             | Marker::TEM => MarkerType::StandAlone,
             _ => MarkerType::Segment,
+        }
+    }
+
+    pub fn encoding_process(&self) -> (EncodingProcess, EntropyCoding) {
+        match self {
+            Marker::SOF0 => (EncodingProcess::BaselineDCT, EntropyCoding::Huffman),
+            Marker::SOF1 => (
+                EncodingProcess::ExtendedSequentialDCT,
+                EntropyCoding::Huffman,
+            ),
+            Marker::SOF2 => (EncodingProcess::ProgressiveDCT, EntropyCoding::Huffman),
+            Marker::SOF3 => (EncodingProcess::LosslessSequential, EntropyCoding::Huffman),
+            Marker::SOF9 => (
+                EncodingProcess::ExtendedSequentialDCT,
+                EntropyCoding::Arithmetic,
+            ),
+            Marker::SOF10 => (EncodingProcess::ProgressiveDCT, EntropyCoding::Arithmetic),
+            Marker::SOF11 => (
+                EncodingProcess::LosslessSequential,
+                EntropyCoding::Arithmetic,
+            ),
+            _ => unreachable!(),
         }
     }
 

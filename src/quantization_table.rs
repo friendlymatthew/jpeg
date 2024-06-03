@@ -1,14 +1,11 @@
+use crate::sample_precision::SamplePrecision;
 use std::simd::Simd;
-use crate::interchange::sample_precision::SamplePrecision;
 
 #[derive(Debug)]
 enum TableType {
     Luminance = 0,
     Chrominance = 1,
 }
-
-// 8x8
-pub const QUANT_TABLE_WIDTH: usize = 8;
 
 #[derive(Debug)]
 pub struct QuantTable {

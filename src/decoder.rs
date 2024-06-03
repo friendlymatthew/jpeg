@@ -1,90 +1,53 @@
-use crate::interchange::marker::{Marker, MarkerType};
+use crate::marker::{Marker, MarkerType};
+use crate::parser::Parser;
+use crate::EncodingProcess;
 use anyhow::{anyhow, Result};
 use memmap::Mmap;
-use rayon::iter::*;
+use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::ParallelIterator;
 use std::collections::HashMap;
 use std::fs::File;
 use std::simd::prelude::*;
-use crate::decoder::dct_decoder::JpegDecoder;
-use crate::interchange::Compression;
 
-pub struct JFIFReader {
-    pub mmap: Mmap,
-    pub cursor: usize,
+type Marlen = (usize, usize); // offset, length
+
+pub struct Decoder {
+    pub(crate) mmap: Mmap,
+    pub(crate) cursor: usize,
+    pub(crate) encoding: EncodingProcess,
 }
 
-impl JFIFReader {
+impl Decoder {
     const LANE_COUNT: usize = 64;
 
     pub fn from_file(file: File) -> Result<Self> {
         let mmap = unsafe { Mmap::map(&file)? };
-        Ok(JFIFReader { mmap, cursor: 0 })
+        Ok(Decoder {
+            mmap,
+            cursor: 0,
+            encoding: EncodingProcess::BaselineDCT,
+        })
     }
 
     pub fn from_file_path(file_path: &str) -> Result<Self> {
         let file = File::open(file_path)?;
-        JFIFReader::from_file(file)
+        Decoder::from_file(file)
     }
 
-    pub(crate) fn decoder(&mut self, compression: Compression) -> Result<JpegDecoder>{
-        let marker_marlen_map = self.scan_markers()?;
+    fn check_start_of_image(&mut self) -> Result<()> {
+        let start: Simd<u8, 2> =
+            Simd::from_array([self.mmap[self.cursor], self.mmap[self.cursor + 1]]);
 
-        /*
-        [SOI][     FRAME     ][EOI]
-         */
-
-        if !marker_marlen_map.contains_key(&Marker::SOI)
-            || !marker_marlen_map.contains_key(&Marker::EOI)
+        match start
+            .simd_eq(Simd::from([Marker::GLOBAL as u8, Marker::SOI as u8]))
+            .all()
         {
-            return Err(anyhow!(
-                "Start of Image markery and End of Marker image must be in image data"
-            ));
+            true => Ok(()),
+            false => Err(anyhow!("Error, failed to find SOI marker")),
         }
-
-        let soi_marlen = marker_marlen_map
-            .get(&Marker::SOI)
-            .ok_or(anyhow!("failed to find soi marker"))?;
-        let eoi_marlen = marker_marlen_map
-            .get(&Marker::EOI)
-            .ok_or(anyhow!("failed to find eoi marker"))?;
-
-        if soi_marlen.len() != 1 || eoi_marlen.len() != 1 {
-            return Err(anyhow!(
-                "Found marker, but was not able to find any marker-lengths"
-            ));
-        }
-
-        let (soi_marlen_offset, soi_marlen_length) = soi_marlen[0];
-        let (eoi_marlen_offset, eoi_marlen_length) = eoi_marlen[0];
-
-        debug_assert_eq!(soi_marlen_length, 0);
-        debug_assert_eq!(eoi_marlen_length, 0);
-
-        if soi_marlen_offset != Marker::SIZE {
-            return Err(anyhow!(
-                "Start of Image marlen should be immediately after the marker bytes in image data"
-            ));
-        }
-
-        if eoi_marlen_offset != self.mmap.len() {
-            return Err(anyhow!(
-                "End of Image marlen should be the first out of bounds index in image data"
-            ));
-        }
-
-        if compression == Compression::Baseline || compression == Compression::ExtendedDCT {
-            if !marker_marlen_map.contains_key(&Marker::DHT) {
-                return Err(anyhow!(
-                    "Unable to find huffman table markers"
-                ))
-            }
-        }
-
-
-        Ok(JpegDecoder::new(self.mmap.to_vec(), marker_marlen_map))
     }
 
-    fn scan_markers(&mut self) -> Result<HashMap<Marker, Vec<(usize, usize)>>> {
+    fn scan_markers(&mut self) -> Result<HashMap<Marker, Vec<Marlen>>> {
         let mut temp_chunk = [0u8; Self::LANE_COUNT];
         let mut all_markers = Marker::all();
         let mut marker_marlen_map = HashMap::new();
@@ -185,23 +148,28 @@ impl JFIFReader {
 
         Ok(marker_marlen_map)
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn validate_mike() -> Result<()> {
-        let mut jfif_reader = JFIFReader {
-            mmap: unsafe { Mmap::map(&File::open("mike.jpg")?)? },
-            cursor: 0,
-        };
+    pub(crate) fn setup(&mut self) -> Result<Parser> {
+        self.check_start_of_image()?;
+        let marlen_map = self.scan_markers()?;
 
-        let decoder = jfif_reader.decoder(Compression::Baseline);
-        assert!(decoder.is_ok());
+        Ok(Parser::new(self.mmap.to_vec(), marlen_map, self.encoding))
+    }
+
+    pub fn decode(&mut self) -> Result<()> {
+        let parser = self.setup()?;
+
+        match self.encoding {
+            EncodingProcess::BaselineDCT => {
+                let _huffman_tables = parser.parse_huffman_trees()?;
+                let _quantization_tables = parser.parse_quant_table()?;
+                let _frame_header = parser.parse_start_of_frame()?;
+                let (_scan_data, encoded_image_start_index) = parser.parse_start_of_scan()?;
+                let _compressed_image_data = parser.parse_image_data(encoded_image_start_index)?;
+            }
+            _ => todo!(),
+        }
 
         Ok(())
     }
-
-
 }
