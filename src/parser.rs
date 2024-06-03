@@ -1,8 +1,10 @@
+use crate::frame_header::{Component, ComponentType, FrameHeader};
 use crate::huffman_tree::HuffmanTree;
 use crate::marker::Marker;
 use crate::quantization_table::QuantTable;
 use crate::sample_precision::SamplePrecision;
-use crate::{Component, ComponentType, EncodingProcess, FrameHeader, ScanData};
+use crate::scan_header::{ScanComponentSelector, ScanHeader};
+use crate::EncodingProcess;
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::iter;
@@ -138,14 +140,14 @@ impl Parser {
                 .map(|(&code, &freq)| (code, freq))
                 .collect::<Vec<_>>();
 
-            let tree = HuffmanTree::from(ht_types[idx], ht_numbers[idx] as usize, code_freq);
+            let tree = HuffmanTree::from(ht_types[idx], ht_numbers[idx], code_freq);
             trees.push(tree);
         }
 
         Ok(trees)
     }
 
-    pub(crate) fn parse_start_of_scan(&self) -> Result<(Vec<ScanData>, usize)> {
+    pub(crate) fn parse_start_of_scan(&self) -> Result<(ScanHeader, usize)> {
         let sos_marlens = self.get_marker_segment(&Marker::SOS)?;
         debug_assert_eq!(sos_marlens.len(), 1);
 
@@ -153,15 +155,16 @@ impl Parser {
 
         let mut current_offset = offset;
 
-        let num_components = self.buffer[current_offset];
+        let component_type = ComponentType::from(self.buffer[current_offset]);
         current_offset += 1;
 
         debug_assert_eq!(
-            num_components, 3,
+            component_type,
+            ComponentType::Color,
             "as of now assume only dealing with color components is 3"
         );
 
-        let mut scan_data = vec![];
+        let mut scan_component_selectors= vec![];
 
         let component_ids = Simd::from([
             self.buffer[current_offset],
@@ -185,18 +188,37 @@ impl Parser {
         let ac_huffman_table_ids = huffman_table_ids & Simd::splat(0b1111);
 
         for i in 0..3 {
-            scan_data.push(ScanData::from(
+            scan_component_selectors.push(ScanComponentSelector::from(
                 component_ids[i],
                 dc_huffman_table_ids[i],
                 ac_huffman_table_ids[i],
             ));
         }
 
-        current_offset += 2 * (num_components as usize);
-        // always skip 3 bytes.
-        current_offset += 3;
+        current_offset += 2 * (component_type as usize);
 
-        Ok((scan_data, current_offset))
+        let predictor_selection = self.buffer[current_offset];
+        current_offset += 1;
+
+        let end_of_spectral_selection = self.buffer[current_offset];
+        current_offset += 1;
+
+        let approx_bit_chunk = self.buffer[current_offset];
+        current_offset += 1;
+
+        let (successive_approx_bit_position_high, point_transform) = (
+            approx_bit_chunk >> 4,
+            approx_bit_chunk & 0b1111
+            );
+
+        Ok((ScanHeader {
+            component_type,
+            scan_component_selectors,
+            predictor_selection,
+            end_of_spectral_selection,
+            successive_approx_bit_position_high,
+            point_transform
+        }, current_offset))
     }
 
     pub(crate) fn parse_start_of_frame(&self) -> Result<FrameHeader> {
@@ -218,12 +240,12 @@ impl Parser {
 
         current_offset += 4;
 
-        let num_components = ComponentType::from(self.buffer[current_offset]);
+        let component_type = ComponentType::from(self.buffer[current_offset]);
         current_offset += 1;
 
         let mut components = vec![];
 
-        match num_components {
+        match component_type {
             ComponentType::Grayscale => {
                 // naive solution
                 let component_id = self.buffer[current_offset];
@@ -284,7 +306,7 @@ impl Parser {
             precision,
             image_height,
             image_width,
-            component_type: num_components,
+            component_type,
             components,
         })
     }
@@ -345,7 +367,6 @@ mod tests {
     use super::*;
     use crate::decoder::Decoder;
     use crate::huffman_tree::HuffmanClass;
-    use crate::{Component, ComponentType, FrameHeader};
     use memmap::Mmap;
     use std::fs::{File, OpenOptions};
     use std::io::Write;
@@ -409,8 +430,8 @@ mod tests {
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x07, 0xB8, 0x09, 0x38, 0x39, 0x76,
                 0x78, // 28
                 0xFF, 0xDA, // START OF SCAN
-                0x00, 0x0C, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x3F,
-                0x00, // three bytes that we skip in sos
+                0x00, 0x08, 0x03, 0x01, 0x10,
+                0x01, 0x3F, 0x10, // three bytes that we skip in sos
                 0xFF, // this should be the start of image data
                 0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x02, 0x04, b'h', 0x02, 0xFF, 0xD9, // EOI
             ];
@@ -501,8 +522,14 @@ mod tests {
             vec![0, 0, 1, 1]
         );
 
-        let (_, s_idx) = parser.parse_start_of_scan()?;
+        let (scan_header, s_idx) = parser.parse_start_of_scan()?;
 
+        /*
+        assert_eq!(scan_header.predictor_selection, 0);
+        assert_eq!(scan_header.end_of_spectral_selection, 63);
+        assert_eq!(scan_header.successive_approx_bit_position_high, 1);
+        assert_eq!(scan_header.point_transform, 0);
+         */
         assert_eq!(
             parser.parse_image_data(s_idx)?,
             [0xFF, 0x00, 0xFF, 0xFF, 0x02, 0x04, b'h', 0x02,].to_vec()

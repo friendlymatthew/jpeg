@@ -90,13 +90,13 @@ pub(crate) type NPtr = Option<NonNull<HuffmanNode>>;
 #[derive(Debug)]
 pub struct HuffmanTree {
     pub(crate) class: HuffmanClass,
-    pub(crate) destination_id: usize,
+    pub(crate) destination_id: u8,
     root: NPtr,
     _woof: PhantomData<HuffmanNode>,
 }
 
 impl HuffmanTree {
-    pub fn from(class: u8, destination_id: usize, code_freqs: Vec<(u8, usize)>) -> Self {
+    pub fn from(class: u8, destination_id: u8, code_freqs: Vec<(u8, usize)>) -> Self {
         let mut min_heap = BinaryHeap::new();
 
         for (code, freq) in code_freqs {
