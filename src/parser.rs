@@ -1,7 +1,7 @@
 use crate::frame_header::{Component, ComponentType, FrameHeader};
 use crate::huffman_tree::HuffmanTree;
 use crate::marker::Marker;
-use crate::quantization_table::QuantTable;
+use crate::quantization_table::{QuantizationTable};
 use crate::sample_precision::SamplePrecision;
 use crate::scan_header::{ScanComponentSelector, ScanHeader};
 use crate::EncodingProcess;
@@ -78,7 +78,7 @@ impl Parser {
         Ok((qt_ids, qt_precisions))
     }
 
-    pub(crate) fn parse_quant_table(&self) -> Result<Vec<QuantTable>> {
+    pub(crate) fn parse_quant_table(&self) -> Result<Vec<QuantizationTable>> {
         let mut tables = vec![];
 
         let (qt_ids, qt_precisions) = self.parse_quant_table_information()?;
@@ -93,7 +93,7 @@ impl Parser {
             );
 
             let (qt_id, qt_precision) = (qt_ids[idx], qt_precisions[idx]);
-            tables.push(QuantTable::from(qt_id, qt_precision, qt_data))
+            tables.push(QuantizationTable::from(qt_id, qt_precision, qt_data))
         }
 
         Ok(tables)
@@ -164,7 +164,7 @@ impl Parser {
             "as of now assume only dealing with color components is 3"
         );
 
-        let mut scan_component_selectors= vec![];
+        let mut scan_component_selectors = vec![];
 
         let component_ids = Simd::from([
             self.buffer[current_offset],
@@ -206,19 +206,20 @@ impl Parser {
         let approx_bit_chunk = self.buffer[current_offset];
         current_offset += 1;
 
-        let (successive_approx_bit_position_high, point_transform) = (
-            approx_bit_chunk >> 4,
-            approx_bit_chunk & 0b1111
-            );
+        let (successive_approx_bit_position_high, point_transform) =
+            (approx_bit_chunk >> 4, approx_bit_chunk & 0b1111);
 
-        Ok((ScanHeader {
-            component_type,
-            scan_component_selectors,
-            predictor_selection,
-            end_of_spectral_selection,
-            successive_approx_bit_position_high,
-            point_transform
-        }, current_offset))
+        Ok((
+            ScanHeader {
+                component_type,
+                scan_component_selectors,
+                predictor_selection,
+                end_of_spectral_selection,
+                successive_approx_bit_position_high,
+                point_transform,
+            },
+            current_offset,
+        ))
     }
 
     pub(crate) fn parse_start_of_frame(&self) -> Result<FrameHeader> {
@@ -430,8 +431,8 @@ mod tests {
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x07, 0xB8, 0x09, 0x38, 0x39, 0x76,
                 0x78, // 28
                 0xFF, 0xDA, // START OF SCAN
-                0x00, 0x08, 0x03, 0x01, 0x10,
-                0x01, 0x3F, 0x10, // three bytes that we skip in sos
+                0x00, 0x08, 0x03, 0x01, 0x10, 0x01, 0x3F,
+                0x10, // three bytes that we skip in sos
                 0xFF, // this should be the start of image data
                 0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x02, 0x04, b'h', 0x02, 0xFF, 0xD9, // EOI
             ];

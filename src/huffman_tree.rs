@@ -89,8 +89,12 @@ pub(crate) type NPtr = Option<NonNull<HuffmanNode>>;
 
 #[derive(Debug)]
 pub struct HuffmanTree {
+    /// Table class - 0 = DC table or lossless table, 1 = AC table.
     pub(crate) class: HuffmanClass,
+
+    /// Specifies one of four possible destinations where the huffman table will be used.
     pub(crate) destination_id: u8,
+
     root: NPtr,
     _woof: PhantomData<HuffmanNode>,
 }

@@ -55,8 +55,7 @@ impl ScanComponentSelector {
         Self {
             component_id,
             dc_destination_id,
-            ac_destination_id
+            ac_destination_id,
         }
     }
 }
-
