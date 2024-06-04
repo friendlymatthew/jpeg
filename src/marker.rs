@@ -1,4 +1,4 @@
-use crate::{EncodingProcess, EntropyCoding};
+use crate::coding::{CodingProcess, EntropyCoding};
 use std::collections::HashSet;
 
 pub(crate) enum MarkerType {
@@ -449,24 +449,10 @@ impl Marker {
         }
     }
 
-    pub fn encoding_process(&self) -> (EncodingProcess, EntropyCoding) {
+    pub fn encoding_process(&self) -> (CodingProcess, EntropyCoding) {
         match self {
-            Marker::SOF0 => (EncodingProcess::BaselineDCT, EntropyCoding::Huffman),
-            Marker::SOF1 => (
-                EncodingProcess::ExtendedSequentialDCT,
-                EntropyCoding::Huffman,
-            ),
-            Marker::SOF2 => (EncodingProcess::ProgressiveDCT, EntropyCoding::Huffman),
-            Marker::SOF3 => (EncodingProcess::LosslessSequential, EntropyCoding::Huffman),
-            Marker::SOF9 => (
-                EncodingProcess::ExtendedSequentialDCT,
-                EntropyCoding::Arithmetic,
-            ),
-            Marker::SOF10 => (EncodingProcess::ProgressiveDCT, EntropyCoding::Arithmetic),
-            Marker::SOF11 => (
-                EncodingProcess::LosslessSequential,
-                EntropyCoding::Arithmetic,
-            ),
+            Marker::SOF0 => (CodingProcess::BaselineDCT, EntropyCoding::Huffman),
+            Marker::SOF1 => (CodingProcess::ExtendedSequentialDCT, EntropyCoding::Huffman),
             _ => unreachable!(),
         }
     }

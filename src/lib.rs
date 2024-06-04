@@ -2,6 +2,7 @@
 
 extern crate core;
 
+mod coding;
 pub mod decoder;
 mod frame_header;
 mod grayscale;
@@ -11,16 +12,3 @@ pub(crate) mod parser;
 pub(crate) mod quantization_table;
 pub(crate) mod sample_precision;
 mod scan_header;
-
-pub enum EntropyCoding {
-    Huffman,
-    Arithmetic,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum EncodingProcess {
-    BaselineDCT,
-    ExtendedSequentialDCT,
-    ProgressiveDCT,
-    LosslessSequential,
-}

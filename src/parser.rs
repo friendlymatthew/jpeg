@@ -1,14 +1,14 @@
 use crate::frame_header::{Component, ComponentType, FrameHeader};
 use crate::huffman_tree::HuffmanTree;
 use crate::marker::Marker;
-use crate::quantization_table::{QuantizationTable};
+use crate::quantization_table::QuantizationTable;
 use crate::sample_precision::SamplePrecision;
 use crate::scan_header::{ScanComponentSelector, ScanHeader};
-use crate::EncodingProcess;
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::iter;
 use std::simd::prelude::*;
+use crate::coding::CodingProcess;
 
 pub const QUANTIZATION_TABLE_BYTES: usize = 64;
 
@@ -18,11 +18,11 @@ pub(crate) type MarlenMap = HashMap<Marker, Vec<Marlen>>;
 pub(crate) struct Parser {
     buffer: Vec<u8>,
     marlen_map: MarlenMap,
-    encoding: EncodingProcess,
+    encoding: CodingProcess,
 }
 
 impl Parser {
-    pub fn new(buffer: Vec<u8>, marlen_map: MarlenMap, encoding: EncodingProcess) -> Self {
+    pub fn new(buffer: Vec<u8>, marlen_map: MarlenMap, encoding: CodingProcess) -> Self {
         Parser {
             buffer,
             marlen_map,
@@ -66,10 +66,10 @@ impl Parser {
         );
 
         // extract ht information
-        let qt_precisions_mask = Simd::splat(0b1111);
+        let qt_precisions_mask = Simd::splat(0b11110000);
         let qt_precisions = qt_informations & qt_precisions_mask;
 
-        let qt_ids_mask = Simd::splat(0b11110000);
+        let qt_ids_mask = Simd::splat(0b1111);
         let qt_ids = (qt_informations & qt_ids_mask) >> 4;
 
         let qt_precisions = qt_precisions.to_array();
@@ -377,7 +377,7 @@ mod tests {
         let mut decoder = Decoder {
             mmap: unsafe { Mmap::map(&File::open("mike.jpg")?)? },
             cursor: 0,
-            encoding: EncodingProcess::BaselineDCT,
+            encoding: CodingProcess::BaselineDCT,
         };
 
         Ok(decoder.setup()?)
@@ -413,7 +413,8 @@ mod tests {
                 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0x01, 0x01, 0x01, 0x00, 0x48, 0x00, 0x48,
                 0x00, 0x00, // 16
                 0xFF, 0xDB, // QT 1
-                0x00, 0x03, 0x00, 0xFF, 0xDB, // QT 2
+                0x00, 0x03, 0x00,
+                0xFF, 0xDB, // QT 2
                 0x00, 0x03, 0x00, 0xFF, 0xC0, // START OF FRAME
                 0x00, 0x11, 0x08, 0x00, 0x02, 0x00, 0x06, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01,
                 0x03, 0x11, 0x01, // 17
@@ -459,7 +460,7 @@ mod tests {
         let mut decoder = Decoder {
             mmap,
             cursor: 0,
-            encoding: EncodingProcess::BaselineDCT,
+            encoding: CodingProcess::BaselineDCT,
         };
         let parser = decoder.setup()?;
 
@@ -525,12 +526,11 @@ mod tests {
 
         let (scan_header, s_idx) = parser.parse_start_of_scan()?;
 
-        /*
-        assert_eq!(scan_header.predictor_selection, 0);
+        assert_eq!(scan_header.predictor_selection, 0x01);
         assert_eq!(scan_header.end_of_spectral_selection, 63);
         assert_eq!(scan_header.successive_approx_bit_position_high, 1);
         assert_eq!(scan_header.point_transform, 0);
-         */
+
         assert_eq!(
             parser.parse_image_data(s_idx)?,
             [0xFF, 0x00, 0xFF, 0xFF, 0x02, 0x04, b'h', 0x02,].to_vec()

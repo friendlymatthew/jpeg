@@ -1,6 +1,6 @@
+use crate::coding::CodingProcess;
 use crate::marker::{Marker, MarkerType};
 use crate::parser::Parser;
-use crate::EncodingProcess;
 use anyhow::{anyhow, Result};
 use memmap::Mmap;
 use rayon::iter::IntoParallelRefIterator;
@@ -8,13 +8,15 @@ use rayon::iter::ParallelIterator;
 use std::collections::HashMap;
 use std::fs::File;
 use std::simd::prelude::*;
+use crate::huffman_tree::HuffmanClass;
+use crate::sample_precision::SamplePrecision;
 
 type Marlen = (usize, usize); // offset, length
 
 pub struct Decoder {
     pub(crate) mmap: Mmap,
     pub(crate) cursor: usize,
-    pub(crate) encoding: EncodingProcess,
+    pub(crate) encoding: CodingProcess,
 }
 
 impl Decoder {
@@ -25,7 +27,7 @@ impl Decoder {
         Ok(Decoder {
             mmap,
             cursor: 0,
-            encoding: EncodingProcess::BaselineDCT,
+            encoding: CodingProcess::BaselineDCT,
         })
     }
 
@@ -159,16 +161,63 @@ impl Decoder {
     pub fn decode(&mut self) -> Result<()> {
         let parser = self.setup()?;
 
+        let code_schema = self.encoding.schema();
+
         match self.encoding {
-            EncodingProcess::BaselineDCT => {
-                let _huffman_tables = parser.parse_huffman_trees()?;
-                let _quantization_tables = parser.parse_quant_table()?;
-                let _frame_header = parser.parse_start_of_frame()?;
-                let (_scan_data, encoded_image_start_index) = parser.parse_start_of_scan()?;
+            CodingProcess::BaselineDCT => {
+                let huffman_trees = parser.parse_huffman_trees()?;
+                let quantization_tables = parser.parse_quant_table()?;
+                let frame_header = parser.parse_start_of_frame()?;
+                let (scan_header, encoded_image_start_index) = parser.parse_start_of_scan()?;
                 let _compressed_image_data = parser.parse_image_data(encoded_image_start_index)?;
+
+                // 0. Make sure headers align
+                if frame_header.component_type != scan_header.component_type {
+                    return Err(anyhow!("header component types do not align."))
+                }
+
+                // 1. since huffman, huffman. no need to check lmao
+
+                // 2. count num ac, dc tables for entropy coding
+                let (num_ac_tables, num_dc_tables) = huffman_trees.iter().fold((0, 0), |(ac_count, dc_count), ht| {
+                    match ht.class {
+                        HuffmanClass::AC => (ac_count + 1, dc_count),
+                        HuffmanClass::DC => (ac_count, dc_count + 1),
+                    }
+                });
+
+                let (expected_ac_tables, expected_dc_tables) = code_schema.entropy_table_count;
+                if num_ac_tables != expected_ac_tables || num_dc_tables != expected_dc_tables {
+                    return Err(anyhow!("number of ac & dc entropy tables mismatch from expected."))
+                }
+
+                // 3. Check precision
+                let precisions: Vec<SamplePrecision> = quantization_tables.iter().map(|qt| qt.precision).collect();
+
+                if !precisions.iter().all(|p| *p == SamplePrecision::EightBit) {
+                    return Err(anyhow!(format!("expected 8-bit samples within each component. Got {:?}", &precisions)))
+                }
             }
             _ => todo!(),
         }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode() -> Result<()> {
+        let mut decoder = Decoder {
+            mmap: unsafe { Mmap::map(&File::open("mike.jpg")?)? },
+            cursor: 0,
+            encoding: CodingProcess::BaselineDCT,
+        };
+
+        decoder.decode()?;
 
         Ok(())
     }
