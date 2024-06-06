@@ -29,7 +29,6 @@ pub struct ProcessSchema {
     pub(crate) entropy_table_count: (usize, usize),
 }
 
-
 impl CodingProcess {
     pub(crate) fn schema(&self) -> ProcessSchema {
         match self {

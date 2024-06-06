@@ -1,6 +1,8 @@
 use crate::coding::CodingProcess;
+use crate::huffman_tree::HuffmanClass;
 use crate::marker::{Marker, MarkerType};
 use crate::parser::Parser;
+use crate::sample_precision::SamplePrecision;
 use anyhow::{anyhow, Result};
 use memmap::Mmap;
 use rayon::iter::IntoParallelRefIterator;
@@ -8,8 +10,6 @@ use rayon::iter::ParallelIterator;
 use std::collections::HashMap;
 use std::fs::File;
 use std::simd::prelude::*;
-use crate::huffman_tree::HuffmanClass;
-use crate::sample_precision::SamplePrecision;
 
 type Marlen = (usize, usize); // offset, length
 
@@ -173,29 +173,36 @@ impl Decoder {
 
                 // 0. Make sure headers align
                 if frame_header.component_type != scan_header.component_type {
-                    return Err(anyhow!("header component types do not align."))
+                    return Err(anyhow!("header component types do not align."));
                 }
 
                 // 1. since huffman, huffman. no need to check lmao
 
                 // 2. count num ac, dc tables for entropy coding
-                let (num_ac_tables, num_dc_tables) = huffman_trees.iter().fold((0, 0), |(ac_count, dc_count), ht| {
-                    match ht.class {
-                        HuffmanClass::AC => (ac_count + 1, dc_count),
-                        HuffmanClass::DC => (ac_count, dc_count + 1),
-                    }
-                });
+                let (num_ac_tables, num_dc_tables) =
+                    huffman_trees
+                        .iter()
+                        .fold((0, 0), |(ac_count, dc_count), ht| match ht.class {
+                            HuffmanClass::AC => (ac_count + 1, dc_count),
+                            HuffmanClass::DC => (ac_count, dc_count + 1),
+                        });
 
                 let (expected_ac_tables, expected_dc_tables) = code_schema.entropy_table_count;
                 if num_ac_tables != expected_ac_tables || num_dc_tables != expected_dc_tables {
-                    return Err(anyhow!("number of ac & dc entropy tables mismatch from expected."))
+                    return Err(anyhow!(
+                        "number of ac & dc entropy tables mismatch from expected."
+                    ));
                 }
 
                 // 3. Check precision
-                let precisions: Vec<SamplePrecision> = quantization_tables.iter().map(|qt| qt.precision).collect();
+                let precisions: Vec<SamplePrecision> =
+                    quantization_tables.iter().map(|qt| qt.precision).collect();
 
                 if !precisions.iter().all(|p| *p == SamplePrecision::EightBit) {
-                    return Err(anyhow!(format!("expected 8-bit samples within each component. Got {:?}", &precisions)))
+                    return Err(anyhow!(format!(
+                        "expected 8-bit samples within each component. Got {:?}",
+                        &precisions
+                    )));
                 }
             }
             _ => todo!(),

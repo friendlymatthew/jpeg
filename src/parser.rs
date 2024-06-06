@@ -1,14 +1,14 @@
+use crate::coding::CodingProcess;
 use crate::frame_header::{Component, ComponentType, FrameHeader};
 use crate::huffman_tree::HuffmanTree;
 use crate::marker::Marker;
 use crate::quantization_table::QuantizationTable;
 use crate::sample_precision::SamplePrecision;
-use crate::scan_header::{ScanComponentSelector, ScanHeader};
+use crate::scan_header::{EncodingOrder, ScanComponentSelector, ScanHeader};
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::iter;
 use std::simd::prelude::*;
-use crate::coding::CodingProcess;
 
 pub const QUANTIZATION_TABLE_BYTES: usize = 64;
 
@@ -155,7 +155,7 @@ impl Parser {
 
         let mut current_offset = offset;
 
-        let component_type = ComponentType::from(self.buffer[current_offset]);
+        let (component_type, encoding_order) = ComponentType::from(self.buffer[current_offset]);
         current_offset += 1;
 
         debug_assert_eq!(
@@ -197,10 +197,10 @@ impl Parser {
 
         current_offset += 2 * (component_type as usize);
 
-        let predictor_selection = self.buffer[current_offset];
+        let start_of_spectral = self.buffer[current_offset];
         current_offset += 1;
 
-        let end_of_spectral_selection = self.buffer[current_offset];
+        let end_of_spectral= self.buffer[current_offset];
         current_offset += 1;
 
         let approx_bit_chunk = self.buffer[current_offset];
@@ -211,10 +211,11 @@ impl Parser {
 
         Ok((
             ScanHeader {
+                encoding_order,
                 component_type,
                 scan_component_selectors,
-                predictor_selection,
-                end_of_spectral_selection,
+                start_of_spectral,
+                end_of_spectral,
                 successive_approx_bit_position_high,
                 point_transform,
             },
@@ -246,8 +247,8 @@ impl Parser {
 
         let mut components = vec![];
 
-        match component_type {
-            ComponentType::Grayscale => {
+        match component_type.1 {
+            EncodingOrder::NonInterleaved=> {
                 // naive solution
                 let component_id = self.buffer[current_offset];
                 current_offset += 1;
@@ -264,7 +265,7 @@ impl Parser {
                     qt_table_id,
                 ))
             }
-            ComponentType::Color => {
+            EncodingOrder::Interleaved => {
                 let component_ids = Simd::from([
                     self.buffer[current_offset],
                     self.buffer[current_offset + 3],
@@ -307,7 +308,7 @@ impl Parser {
             precision,
             image_height,
             image_width,
-            component_type,
+            component_type: component_type.0,
             components,
         })
     }
@@ -413,8 +414,7 @@ mod tests {
                 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0x01, 0x01, 0x01, 0x00, 0x48, 0x00, 0x48,
                 0x00, 0x00, // 16
                 0xFF, 0xDB, // QT 1
-                0x00, 0x03, 0x00,
-                0xFF, 0xDB, // QT 2
+                0x00, 0x03, 0x00, 0xFF, 0xDB, // QT 2
                 0x00, 0x03, 0x00, 0xFF, 0xC0, // START OF FRAME
                 0x00, 0x11, 0x08, 0x00, 0x02, 0x00, 0x06, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01,
                 0x03, 0x11, 0x01, // 17
@@ -526,8 +526,8 @@ mod tests {
 
         let (scan_header, s_idx) = parser.parse_start_of_scan()?;
 
-        assert_eq!(scan_header.predictor_selection, 0x01);
-        assert_eq!(scan_header.end_of_spectral_selection, 63);
+        assert_eq!(scan_header.start_of_spectral, 0x01);
+        assert_eq!(scan_header.end_of_spectral, 63);
         assert_eq!(scan_header.successive_approx_bit_position_high, 1);
         assert_eq!(scan_header.point_transform, 0);
 

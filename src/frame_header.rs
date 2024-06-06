@@ -1,4 +1,5 @@
 use crate::sample_precision::SamplePrecision;
+use crate::scan_header::EncodingOrder;
 
 #[derive(Debug)]
 pub struct FrameHeader {
@@ -29,10 +30,10 @@ pub(crate) enum ComponentType {
 }
 
 impl ComponentType {
-    pub(crate) fn from(b: u8) -> Self {
+    pub(crate) fn from(b: u8) -> (Self, EncodingOrder) {
         match b {
-            1 => ComponentType::Grayscale,
-            3 => ComponentType::Color,
+            1 => (ComponentType::Grayscale, EncodingOrder::NonInterleaved),
+            3 => (ComponentType::Color, EncodingOrder::Interleaved),
             _ => unreachable!(),
         }
     }
