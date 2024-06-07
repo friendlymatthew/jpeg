@@ -171,14 +171,11 @@ impl Decoder {
                 let (scan_header, encoded_image_start_index) = parser.parse_start_of_scan()?;
                 let _compressed_image_data = parser.parse_image_data(encoded_image_start_index)?;
 
-                // 0. Make sure headers align
+                // validation....
                 if frame_header.component_type != scan_header.component_type {
                     return Err(anyhow!("header component types do not align."));
                 }
 
-                // 1. since huffman, huffman. no need to check lmao
-
-                // 2. count num ac, dc tables for entropy coding
                 let (num_ac_tables, num_dc_tables) =
                     huffman_trees
                         .iter()
@@ -194,7 +191,6 @@ impl Decoder {
                     ));
                 }
 
-                // 3. Check precision
                 let precisions: Vec<SamplePrecision> =
                     quantization_tables.iter().map(|qt| qt.precision).collect();
 
@@ -204,6 +200,9 @@ impl Decoder {
                         &precisions
                     )));
                 }
+
+                // now commence the bit stream
+
             }
             _ => todo!(),
         }

@@ -1,13 +1,13 @@
 use crate::frame_header::ComponentType;
 
-/// (Pg. 25) For a given scan, if the scan header parameter `component_type` is 1, then data from only
-/// one source component - the component specified by parameter `Components`[0] - shall be present
-/// within the scan. If `component_type` > 1, then data from `Components` shall be present within
-/// the scan. The order of components in a scan shall be according to the order specified in the
-/// `FrameHeader`.
+/// (Pg. 25) For a given scan, if the scan header parameter `component_type` is 1, then data from
+/// only one source component - the component specified by parameter `Components`[0] - shall be
+/// present within the scan. If `component_type` > 1, then data from `Components` shall be
+/// present within the scan. The order of components in a scan shall be according to the order
+/// specified in the `FrameHeader`.
 #[derive(Debug)]
 pub(crate) enum EncodingOrder {
-    /// The encoder compressed all image data units in component A before beginning component B
+    /// The encoder compressed all image data units in component A before beginning component B.
     NonInterleaved,
 
     /// The encoder compresses a data unit from A, a data unit from B, a data unit from C, then
@@ -48,7 +48,7 @@ pub struct ScanHeader {
     /// this parameter has no meaning. It shall be set to zero.
     pub(crate) successive_approx_bit_position_high: u8,
 
-    /// Al:In DCT modes of operation, this parameter specifies the point transform (bit position low,
+    /// Al: In DCT modes of operation, this parameter specifies the point transform (bit position low,
     /// used before coding the band of coefficients specified by `predictor_selection` and
     /// `end_of_spectral_selection`. This parameter shall be set to zero for sequential DCT processes.
     /// In the lossless mode of operations, this parameter specifies the point transform Pt.
