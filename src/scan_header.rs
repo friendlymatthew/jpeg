@@ -5,7 +5,7 @@ use crate::frame_header::ComponentType;
 /// present within the scan. If `component_type` > 1, then data from `Components` shall be
 /// present within the scan. The order of components in a scan shall be according to the order
 /// specified in the `FrameHeader`.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub(crate) enum EncodingOrder {
     /// The encoder compressed all image data units in component A before beginning component B.
     NonInterleaved,

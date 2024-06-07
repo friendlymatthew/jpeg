@@ -200,7 +200,7 @@ impl Parser {
         let start_of_spectral = self.buffer[current_offset];
         current_offset += 1;
 
-        let end_of_spectral= self.buffer[current_offset];
+        let end_of_spectral = self.buffer[current_offset];
         current_offset += 1;
 
         let approx_bit_chunk = self.buffer[current_offset];
@@ -248,7 +248,7 @@ impl Parser {
         let mut components = vec![];
 
         match component_type.1 {
-            EncodingOrder::NonInterleaved=> {
+            EncodingOrder::NonInterleaved => {
                 // naive solution
                 let component_id = self.buffer[current_offset];
                 current_offset += 1;

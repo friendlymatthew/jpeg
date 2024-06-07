@@ -202,7 +202,6 @@ impl Decoder {
                 }
 
                 // now commence the bit stream
-
             }
             _ => todo!(),
         }
