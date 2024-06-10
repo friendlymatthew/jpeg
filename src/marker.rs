@@ -451,8 +451,11 @@ impl Marker {
 
     pub fn encoding_process(&self) -> (CodingProcess, EntropyCoding) {
         match self {
-            Marker::SOF0 => (CodingProcess::BaselineDCT, EntropyCoding::Huffman),
-            Marker::SOF1 => (CodingProcess::ExtendedSequentialDCT, EntropyCoding::Huffman),
+            Marker::SOF0 => (CodingProcess::BaselineDCT, EntropyCoding::Huffman(vec![])),
+            Marker::SOF1 => (
+                CodingProcess::ExtendedSequentialDCT,
+                EntropyCoding::Huffman(vec![]),
+            ),
             _ => unreachable!(),
         }
     }

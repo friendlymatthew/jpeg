@@ -57,7 +57,7 @@ pub struct ScanHeader {
 
 #[derive(Debug)]
 pub struct ScanComponentSelector {
-    component_id: u8,
+    pub(crate) component_id: u8,
 
     /// Tdj: Specifies one of four possible DC entropy coding table destinations from which the entropy
     /// table needed for decoding of the DC coefficients of component selector j is retrieved.

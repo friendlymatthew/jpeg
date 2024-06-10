@@ -1,8 +1,11 @@
-use crate::coding::CodingProcess;
+use crate::bitreader::BitReader;
+use crate::coding::{CodingProcess, EntropyCoding};
+use crate::entropy_decoder::EntropyDecoder;
 use crate::huffman_tree::HuffmanClass;
 use crate::marker::{Marker, MarkerType};
 use crate::parser::Parser;
 use crate::sample_precision::SamplePrecision;
+use crate::{frame_header, scan_header};
 use anyhow::{anyhow, Result};
 use memmap::Mmap;
 use rayon::iter::IntoParallelRefIterator;
@@ -169,7 +172,7 @@ impl Decoder {
                 let quantization_tables = parser.parse_quant_table()?;
                 let frame_header = parser.parse_start_of_frame()?;
                 let (scan_header, encoded_image_start_index) = parser.parse_start_of_scan()?;
-                let _compressed_image_data = parser.parse_image_data(encoded_image_start_index)?;
+                let compressed_image_data = parser.parse_image_data(encoded_image_start_index)?;
 
                 // validation....
                 if frame_header.component_type != scan_header.component_type {
@@ -202,6 +205,17 @@ impl Decoder {
                 }
 
                 // now commence the bit stream
+                let mut bit_reader = BitReader::new(&compressed_image_data);
+                let bits = bit_reader.slice_to_bits();
+
+                let mut entropy_decoder = EntropyDecoder::new(
+                    &bits,
+                    scan_header,
+                    frame_header,
+                    EntropyCoding::Huffman(huffman_trees),
+                );
+
+                let _decompressed_image_data = entropy_decoder.decode()?;
             }
             _ => todo!(),
         }

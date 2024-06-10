@@ -2,16 +2,14 @@ use crate::scan_header::EncodingOrder;
 use anyhow::Result;
 
 pub struct BitReader<'a> {
-    encoding_order: EncodingOrder,
     pub(crate) data: &'a [u8],
     pub(crate) bit_cur: usize,
     pub(crate) byte_cur: usize,
 }
 
 impl<'a> BitReader<'a> {
-    pub(crate) fn new(data: &'a [u8], encoding_order: EncodingOrder) -> Self {
+    pub(crate) fn new(data: &'a [u8]) -> Self {
         BitReader {
-            encoding_order,
             data,
             bit_cur: 0,
             byte_cur: 0,
@@ -26,7 +24,7 @@ impl<'a> BitReader<'a> {
         bits
     }
 
-    fn slice_to_bits(&mut self) -> Vec<u8> {
+    pub(crate) fn slice_to_bits(&mut self) -> Vec<u8> {
         let mut bits = Vec::with_capacity(self.data.len() * 8);
         for &byte in self.data {
             bits.extend_from_slice(&self.u8_to_bits(byte));
@@ -49,7 +47,7 @@ mod tests {
 
         for (num, expected) in test_cases {
             let data = vec![num];
-            let mut bit_reader = BitReader::new(&data, EncodingOrder::Interleaved);
+            let mut bit_reader = BitReader::new(&data);
 
             let got = bit_reader.u8_to_bits(num);
 
@@ -63,7 +61,7 @@ mod tests {
     fn test_slice_to_bits() -> Result<()> {
         let data = vec![4, 21, 69];
 
-        let mut bit_reader = BitReader::new(&data, EncodingOrder::Interleaved);
+        let mut bit_reader = BitReader::new(&data);
         let got = bit_reader.slice_to_bits();
 
         assert_eq!(

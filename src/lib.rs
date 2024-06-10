@@ -11,6 +11,7 @@ pub mod decoder;
 
 mod bitreader;
 mod coding;
+mod entropy_decoder;
 pub(crate) mod frame_header;
 pub(crate) mod huffman_tree;
 pub(crate) mod marker;

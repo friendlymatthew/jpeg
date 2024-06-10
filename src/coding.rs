@@ -1,12 +1,34 @@
+use std::collections::HashMap;
+use crate::huffman_tree::HuffmanTree;
+
 pub(crate) enum Operation {
     Sequential,
     Progressive,
 }
 
 pub(crate) enum EntropyCoding {
-    Huffman,
-    Arithmetic,
+    Huffman(Vec<HuffmanTree>),
+    Arithmetic(Vec<()>),
 }
+
+impl EntropyCoding {
+    pub(crate) fn huffman_map(&self) -> HashMap<u8, Vec<&HuffmanTree>> {
+        let mut map = HashMap::new();
+        match self {
+            EntropyCoding::Huffman(hts) => {
+                for ht in hts {
+                    map.entry(ht.destination_id)
+                        .or_insert_with(Vec::new)
+                        .push(ht);
+                }
+            },
+            _ => panic!(),
+        }
+
+        map
+    }
+}
+
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum CodingProcess {
