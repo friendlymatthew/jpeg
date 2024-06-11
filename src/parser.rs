@@ -45,7 +45,7 @@ impl Parser {
         let ht_numbers = ht_informations & ht_number_mask;
 
         // extract ht type (bit 4)
-        let ht_type_mask = Simd::splat(0b10000);
+        let ht_type_mask= Simd::splat(0b11110000);
         let ht_types = (ht_informations & ht_type_mask) >> 4;
 
         let ht_numbers = ht_numbers.to_array();

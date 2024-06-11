@@ -5,7 +5,6 @@ use crate::huffman_tree::HuffmanClass;
 use crate::marker::{Marker, MarkerType};
 use crate::parser::Parser;
 use crate::sample_precision::SamplePrecision;
-use crate::{frame_header, scan_header};
 use anyhow::{anyhow, Result};
 use memmap::Mmap;
 use rayon::iter::IntoParallelRefIterator;

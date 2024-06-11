@@ -76,7 +76,7 @@ impl HuffmanNode {
         }
     }
 
-    fn is_leaf(ptr: NPtr) -> bool {
+    pub(crate) fn is_leaf(ptr: NPtr) -> bool {
         if let Some(node) = ptr {
             unsafe { (*node.as_ptr()).code != u8::MAX }
         } else {
@@ -95,7 +95,7 @@ pub struct HuffmanTree {
     /// Specifies one of four possible destinations where the huffman table will be used.
     pub(crate) destination_id: u8,
 
-    root: NPtr,
+    pub(crate) root: NPtr,
     _woof: PhantomData<HuffmanNode>,
 }
 
