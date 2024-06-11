@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use std::ptr::NonNull;
 
 /// https://www.youtube.com/watch?v=wLoWd2KyUro
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone, Hash, Eq)]
 pub enum HuffmanClass {
     AC = 1,
     DC = 0,

@@ -1,4 +1,3 @@
-use crate::scan_header::EncodingOrder;
 use anyhow::Result;
 
 pub struct BitReader<'a> {

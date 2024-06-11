@@ -33,8 +33,6 @@ impl ComponentType {
     pub(crate) fn from(b: u8) -> (Self, EncodingOrder) {
         match b {
             1 => (ComponentType::Grayscale, EncodingOrder::NonInterleaved),
-            /// When `ComponentType` is 2, that means both component types are provided. Defaults
-            /// to Color
             2 => (ComponentType::Color, EncodingOrder::Interleaved),
             3 => (ComponentType::Color, EncodingOrder::Interleaved),
             4 => todo!(),

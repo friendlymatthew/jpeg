@@ -1,4 +1,4 @@
-use crate::huffman_tree::{HuffmanTree, NPtr};
+use crate::huffman_tree::{HuffmanClass, HuffmanTree, NPtr};
 use std::collections::HashMap;
 
 pub(crate) enum Operation {
@@ -11,15 +11,16 @@ pub(crate) enum EntropyCoding {
     Arithmetic(Vec<()>),
 }
 
+/// (table_class, destination_id)
+type HuffmanMapKey = (HuffmanClass, u8);
+
 impl EntropyCoding {
-    pub(crate) fn huffman_map(&self) -> HashMap<u8, NPtr> {
+    pub(crate) fn huffman_map(&self) -> HashMap<HuffmanMapKey, NPtr> {
         let mut map = HashMap::new();
         match self {
-            EntropyCoding::Huffman(hts) => {
-                hts.iter().for_each(|ht| {
-                    map.insert(ht.destination_id, ht.root);
-                })
-            },
+            EntropyCoding::Huffman(hts) => hts.iter().for_each(|ht| {
+                map.insert((ht.class, ht.destination_id), ht.root);
+            }),
             _ => panic!(),
         };
 

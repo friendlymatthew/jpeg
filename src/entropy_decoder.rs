@@ -1,6 +1,6 @@
 use crate::coding::EntropyCoding;
 use crate::frame_header::FrameHeader;
-use crate::huffman_tree::HuffmanNode;
+use crate::huffman_tree::{HuffmanClass, };
 use crate::scan_header::ScanHeader;
 use anyhow::{anyhow, Result};
 
@@ -39,60 +39,66 @@ impl<'a> EntropyDecoder<'a> {
 
     fn decode_huffman(&mut self) -> Result<Vec<u8>> {
         let mut image_data = vec![];
-
         let huffman_map = self.entropy_coding.huffman_map();
-        println!("huffman map keys: {:?}", huffman_map.keys());
 
-        let component_ord_ids: Vec<_> = self
+        let ac_dc_destination_ids: Vec<_> = self
             .scan_header
             .scan_component_selectors
             .iter()
-            .map(|s| s.component_id)
+            .map(|s| (s.dc_destination_id, s.ac_destination_id))
             .collect();
 
-        println!("number of components {:?}", component_ord_ids);
-
         let mut component_ptr = 0;
+        let mut num_coeffs = 0;
 
-        let mut current_root = *huffman_map
-            .get(&component_ord_ids[component_ptr])
-            .ok_or(anyhow!(format!("failed to find a component with id: {component_ptr}")))?;
+        let mut node_cursor = *huffman_map
+            .get(&(HuffmanClass::DC, ac_dc_destination_ids[component_ptr].0))
+            .ok_or(anyhow!(format!(
+                "failed to find a component with id: {component_ptr}"
+            )))?;
+
         while self.cursor < self.data.len() {
-            match self.data[self.cursor] {
-                0 => {
-                    if let Some(ptr) = current_root {
-                        current_root = unsafe { (*ptr.as_ptr()).left };
+            if let Some(node) = node_cursor {
+                unsafe {
+                    if (*node.as_ptr()).code != u8::MAX {
+                        image_data.push((*node.as_ptr()).code);
+
+                        component_ptr += 1;
+                        if component_ptr == ac_dc_destination_ids.len() {
+                            component_ptr = 0;
+                            num_coeffs += 1;
+                        }
+
+                        let (next_class, next_destination_id) = if num_coeffs % 64 == 0 {
+                            (HuffmanClass::DC, ac_dc_destination_ids[component_ptr].0)
+                        } else {
+                            (HuffmanClass::AC, ac_dc_destination_ids[component_ptr].1)
+                        };
+
+                        node_cursor =
+                            *huffman_map
+                                .get(&(next_class, next_destination_id))
+                                .ok_or(anyhow!(format!(
+                                    "failed to find a component with id: {component_ptr}"
+                                )))?;
+                    } else {
+                        match self.data[self.cursor] {
+                            0 => {
+                                node_cursor = (*node.as_ptr()).left;
+                            }
+                            1 => {
+                                node_cursor = (*node.as_ptr()).right;
+                            }
+                            _ => unreachable!(),
+                        };
                     }
                 }
-                1 => {
-                    if let Some(node) = current_root {
-                        current_root = unsafe { (*node.as_ptr()).right };
-                    }
-                }
-                _ => return Err(anyhow!("data input should only be 1's and 0's")),
-            }
-
-            if HuffmanNode::is_leaf(current_root) {
-                let decompressed_value = if let Some(node) = current_root {
-                    unsafe { (*node.as_ptr()).code }
-                } else {
-                    return Err(anyhow!("unexpected None pointer after checking valid leaf"));
-                };
-
-                image_data.push(decompressed_value);
-                component_ptr += 1;
-
-                if component_ptr >= component_ord_ids.len() {
-                    component_ptr = 0;
-                }
-                current_root = *huffman_map
-                    .get(&component_ord_ids[component_ptr])
-                    .ok_or(anyhow!(format!("failed to find a component with id {}", component_ptr)))?;
             }
 
             self.cursor += 1;
         }
 
+        println!("image data: {:?}", image_data.len());
         Ok(image_data)
     }
 }

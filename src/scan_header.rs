@@ -61,11 +61,11 @@ pub struct ScanComponentSelector {
 
     /// Tdj: Specifies one of four possible DC entropy coding table destinations from which the entropy
     /// table needed for decoding of the DC coefficients of component selector j is retrieved.
-    dc_destination_id: u8,
+    pub(crate) dc_destination_id: u8,
 
     /// Taj: Specifies one of four possible AC entropy coding table destinations from which the entropy
     /// table needed for decoding of the AC coefficients of component selector j is retrieved.
-    ac_destination_id: u8,
+    pub(crate) ac_destination_id: u8,
 }
 
 impl ScanComponentSelector {
