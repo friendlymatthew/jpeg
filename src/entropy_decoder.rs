@@ -1,5 +1,4 @@
 use crate::coding::EntropyCoding;
-use crate::frame_header::FrameHeader;
 use crate::huffman_tree::{HuffmanClass, };
 use crate::scan_header::ScanHeader;
 use anyhow::{anyhow, Result};
@@ -8,7 +7,6 @@ pub(crate) struct EntropyDecoder<'a> {
     data: &'a [u8],
     cursor: usize,
     scan_header: ScanHeader,
-    frame_header: FrameHeader,
     entropy_coding: EntropyCoding,
 }
 
@@ -16,14 +14,12 @@ impl<'a> EntropyDecoder<'a> {
     pub(crate) fn new(
         data: &'a [u8],
         scan_header: ScanHeader,
-        frame_header: FrameHeader,
         entropy_coding: EntropyCoding,
     ) -> Self {
         EntropyDecoder {
             data,
             cursor: 0,
             scan_header,
-            frame_header,
             entropy_coding,
         }
     }

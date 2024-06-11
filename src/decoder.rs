@@ -203,14 +203,12 @@ impl Decoder {
                     )));
                 }
 
-                // now commence the bit stream
                 let mut bit_reader = BitReader::new(&compressed_image_data);
                 let bits = bit_reader.slice_to_bits();
 
                 let mut entropy_decoder = EntropyDecoder::new(
                     &bits,
                     scan_header,
-                    frame_header,
                     EntropyCoding::Huffman(huffman_trees),
                 );
 
