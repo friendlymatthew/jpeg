@@ -1,3 +1,12 @@
+use std::collections::HashMap;
+use std::fs::File;
+use std::simd::prelude::*;
+
+use anyhow::{anyhow, Result};
+use memmap::Mmap;
+use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::ParallelIterator;
+
 use crate::bitreader::BitReader;
 use crate::coding::{CodingProcess, EntropyCoding};
 use crate::entropy_decoder::EntropyDecoder;
@@ -5,13 +14,6 @@ use crate::huffman_tree::HuffmanClass;
 use crate::marker::{Marker, MarkerType};
 use crate::parser::Parser;
 use crate::sample_precision::SamplePrecision;
-use anyhow::{anyhow, Result};
-use memmap::Mmap;
-use rayon::iter::IntoParallelRefIterator;
-use rayon::iter::ParallelIterator;
-use std::collections::HashMap;
-use std::fs::File;
-use std::simd::prelude::*;
 
 type Marlen = (usize, usize); // offset, length
 
@@ -206,11 +208,8 @@ impl Decoder {
                 let mut bit_reader = BitReader::new(&compressed_image_data);
                 let bits = bit_reader.slice_to_bits();
 
-                let mut entropy_decoder = EntropyDecoder::new(
-                    &bits,
-                    scan_header,
-                    EntropyCoding::Huffman(huffman_trees),
-                );
+                let mut entropy_decoder =
+                    EntropyDecoder::new(&bits, scan_header, EntropyCoding::Huffman(huffman_trees));
 
                 let _decompressed_image_data = entropy_decoder.decode()?;
             }

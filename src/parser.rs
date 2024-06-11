@@ -1,3 +1,9 @@
+use std::collections::HashMap;
+use std::iter;
+use std::simd::prelude::*;
+
+use anyhow::{anyhow, Result};
+
 use crate::coding::CodingProcess;
 use crate::frame_header::{Component, ComponentType, FrameHeader};
 use crate::huffman_tree::HuffmanTree;
@@ -5,10 +11,6 @@ use crate::marker::Marker;
 use crate::quantization_table::QuantizationTable;
 use crate::sample_precision::SamplePrecision;
 use crate::scan_header::{EncodingOrder, ScanComponentSelector, ScanHeader};
-use anyhow::{anyhow, Result};
-use std::collections::HashMap;
-use std::iter;
-use std::simd::prelude::*;
 
 pub const QUANTIZATION_TABLE_BYTES: usize = 64;
 
@@ -366,13 +368,16 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::decoder::Decoder;
-    use crate::huffman_tree::HuffmanClass;
-    use memmap::Mmap;
     use std::fs::{File, OpenOptions};
     use std::io::Write;
     use std::sync::Once;
+
+    use memmap::Mmap;
+
+    use crate::decoder::Decoder;
+    use crate::huffman_tree::HuffmanClass;
+
+    use super::*;
 
     fn mike_parser() -> Result<Parser> {
         let mut decoder = Decoder {

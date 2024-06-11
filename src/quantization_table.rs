@@ -1,5 +1,6 @@
-use crate::sample_precision::SamplePrecision;
 use std::simd::Simd;
+
+use crate::sample_precision::SamplePrecision;
 
 #[derive(Debug)]
 enum TableType {

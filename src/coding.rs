@@ -1,5 +1,6 @@
-use crate::huffman_tree::{HuffmanClass, HuffmanTree, NPtr};
 use std::collections::HashMap;
+
+use crate::huffman_tree::{HuffmanClass, HuffmanTree, NPtr};
 
 pub(crate) enum Operation {
     Sequential,

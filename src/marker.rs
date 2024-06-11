@@ -1,5 +1,6 @@
-use crate::coding::{CodingProcess, EntropyCoding};
 use std::collections::HashSet;
+
+use crate::coding::{CodingProcess, EntropyCoding};
 
 pub(crate) enum MarkerType {
     Segment,

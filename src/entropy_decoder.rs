@@ -1,7 +1,8 @@
-use crate::coding::EntropyCoding;
-use crate::huffman_tree::{HuffmanClass, };
-use crate::scan_header::ScanHeader;
 use anyhow::{anyhow, Result};
+
+use crate::coding::EntropyCoding;
+use crate::huffman_tree::HuffmanClass;
+use crate::scan_header::ScanHeader;
 
 pub(crate) struct EntropyDecoder<'a> {
     data: &'a [u8],
@@ -66,7 +67,11 @@ impl<'a> EntropyDecoder<'a> {
                             num_coeffs += 1;
 
                             debug_assert_eq!(component_batch.len(), 3);
-                            image_data.push((component_batch[0], component_batch[1], component_batch[2]));
+                            image_data.push((
+                                component_batch[0],
+                                component_batch[1],
+                                component_batch[2],
+                            ));
                             component_batch.clear();
                         }
 
