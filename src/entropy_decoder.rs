@@ -24,7 +24,7 @@ impl<'a> EntropyDecoder<'a> {
         }
     }
 
-    pub(crate) fn decode(&mut self) -> Result<Vec<u8>> {
+    pub(crate) fn decode(&mut self) -> Result<Vec<(u8, u8, u8)>> {
         let uncompressed_image_data = match &self.entropy_coding {
             EntropyCoding::Huffman(_) => self.decode_huffman(),
             EntropyCoding::Arithmetic(_) => todo!(),
@@ -33,7 +33,7 @@ impl<'a> EntropyDecoder<'a> {
         Ok(uncompressed_image_data)
     }
 
-    fn decode_huffman(&mut self) -> Result<Vec<u8>> {
+    fn decode_huffman(&mut self) -> Result<Vec<(u8, u8, u8)>> {
         let mut image_data = vec![];
         let huffman_map = self.entropy_coding.huffman_map();
 
@@ -53,16 +53,21 @@ impl<'a> EntropyDecoder<'a> {
                 "failed to find a component with id: {component_ptr}"
             )))?;
 
+        let mut component_batch = vec![];
         while self.cursor < self.data.len() {
             if let Some(node) = node_cursor {
                 unsafe {
                     if (*node.as_ptr()).code != u8::MAX {
-                        image_data.push((*node.as_ptr()).code);
-
+                        component_batch.push((*node.as_ptr()).code);
                         component_ptr += 1;
+
                         if component_ptr == ac_dc_destination_ids.len() {
                             component_ptr = 0;
                             num_coeffs += 1;
+
+                            debug_assert_eq!(component_batch.len(), 3);
+                            image_data.push((component_batch[0], component_batch[1], component_batch[2]));
+                            component_batch.clear();
                         }
 
                         let (next_class, next_destination_id) = if num_coeffs % 64 == 0 {
