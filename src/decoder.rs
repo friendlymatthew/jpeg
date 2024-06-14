@@ -211,7 +211,10 @@ impl Decoder {
                 let mut entropy_decoder =
                     EntropyDecoder::new(&bits, scan_header, EntropyCoding::Huffman(huffman_trees));
 
-                let _decompressed_image_data = entropy_decoder.decode()?;
+                let decompressed_image_data = entropy_decoder.decode()?;
+                let mcus = entropy_decoder.zigzag(decompressed_image_data)?;
+
+                mcus.iter().for_each(|mcu| println!("{:?}", mcu));
             }
             _ => todo!(),
         }
