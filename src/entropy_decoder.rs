@@ -136,7 +136,6 @@ impl<'a> EntropyDecoder<'a> {
             self.cursor += 1;
         }
 
-        println!("image data: {:?}", image_data.len());
         Ok(image_data)
     }
 }

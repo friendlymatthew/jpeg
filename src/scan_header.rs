@@ -55,7 +55,7 @@ pub struct ScanHeader {
     pub(crate) point_transform: u8,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct ScanComponentSelector {
     pub(crate) component_id: u8,
 

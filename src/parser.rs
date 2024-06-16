@@ -69,10 +69,10 @@ impl Parser {
 
         // extract ht information
         let qt_precisions_mask = Simd::splat(0b11110000);
-        let qt_precisions = qt_informations & qt_precisions_mask;
+        let qt_precisions = (qt_informations & qt_precisions_mask) >> 4;
 
         let qt_ids_mask = Simd::splat(0b1111);
-        let qt_ids = (qt_informations & qt_ids_mask) >> 4;
+        let qt_ids = qt_informations & qt_ids_mask;
 
         let qt_precisions = qt_precisions.to_array();
         let qt_ids = qt_ids.to_array();

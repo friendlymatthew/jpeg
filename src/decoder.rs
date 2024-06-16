@@ -9,11 +9,14 @@ use rayon::iter::ParallelIterator;
 
 use crate::bitreader::BitReader;
 use crate::coding::{CodingProcess, EntropyCoding};
+use crate::dequantizer::Dequantizer;
 use crate::entropy_decoder::EntropyDecoder;
+use crate::frame_header::Component;
 use crate::huffman_tree::HuffmanClass;
 use crate::marker::{Marker, MarkerType};
 use crate::parser::Parser;
 use crate::sample_precision::SamplePrecision;
+use crate::scan_header::ScanHeader;
 
 type Marlen = (usize, usize); // offset, length
 
@@ -174,6 +177,15 @@ impl Decoder {
                 let frame_header = parser.parse_start_of_frame()?;
                 let (scan_header, encoded_image_start_index) = parser.parse_start_of_scan()?;
                 let compressed_image_data = parser.parse_image_data(encoded_image_start_index)?;
+                let ScanHeader {
+                    scan_component_selectors,
+                    ..
+                } = &scan_header;
+
+                let scan_component_order = scan_component_selectors
+                    .iter()
+                    .map(|c| c.component_id)
+                    .collect::<Vec<_>>();
 
                 // validation....
                 if frame_header.component_type != scan_header.component_type {
@@ -214,7 +226,57 @@ impl Decoder {
                 let decompressed_image_data = entropy_decoder.decode()?;
                 let mcus = entropy_decoder.zigzag(decompressed_image_data)?;
 
-                mcus.iter().for_each(|mcu| println!("{:?}", mcu));
+                // todo! refactor to this format inside entropy_decoder.
+                let mcus: Vec<_> = mcus
+                    .into_iter()
+                    .map(|mcu| {
+                        let (mut res1, mut res2, mut res3) = ([0u8; 64], [0u8; 64], [0u8; 64]);
+
+                        for (idx, &(c1, c2, c3)) in mcu.iter().enumerate() {
+                            res1[idx] = c1;
+                            res2[idx] = c2;
+                            res3[idx] = c3;
+                        }
+
+                        (res1, res2, res3)
+                    })
+                    .collect();
+
+                let mut quantization_table_map = HashMap::new();
+
+                for component in &frame_header.components {
+                    let Component {
+                        component_id,
+                        qt_table_id,
+                        ..
+                    } = component;
+
+                    let qt_table = *quantization_tables
+                        .iter()
+                        .find(|qt| qt.table_id == *qt_table_id)
+                        .ok_or(anyhow!(format!(
+                            "failed to find qt table id {}. \n{:?}",
+                            qt_table_id, quantization_tables
+                        )))?;
+
+                    quantization_table_map.insert(*component_id, qt_table);
+                }
+
+                println!(
+                    "frame: {:?}\nquantization tables {:?}\nquantization table keys: {:?}",
+                    frame_header.components,
+                    quantization_tables,
+                    quantization_table_map.keys()
+                );
+
+                let mut dequantizer = Dequantizer::new(
+                    &frame_header,
+                    &mcus,
+                    &scan_component_order,
+                    quantization_table_map,
+                );
+
+                dequantizer.dequantize()?;
             }
             _ => todo!(),
         }

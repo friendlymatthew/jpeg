@@ -9,7 +9,7 @@ enum TableType {
 }
 
 /// The set of 64 quantization values used to quantize the DCT coefficients
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct QuantizationTable {
     /// Specifies the precision of the qk values. Value 0 indicates 8-bit Qk values; value 1
     /// indicates 16-bit Qk values. Pq shall be zero for 8 bit sample precision P.
