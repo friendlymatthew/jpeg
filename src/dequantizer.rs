@@ -2,8 +2,6 @@ use std::collections::HashMap;
 use std::simd::Simd;
 
 use anyhow::{anyhow, Result};
-use rayon::iter::ParallelIterator;
-use rayon::prelude::IntoParallelRefIterator;
 
 use crate::frame_header::FrameHeader;
 use crate::quantization_table::QuantizationTable;
@@ -33,7 +31,7 @@ impl<'a> Dequantizer<'a> {
     }
 
     pub(crate) fn dequantize(&mut self) -> Result<Vec<(Simd<u8, 64>, Simd<u8, 64>, Simd<u8, 64>)>> {
-        let mut idcts = vec![];
+        let mut dequantized_coefficients = vec![];
 
         for mcu in self.data {
             let (c1, c2, c3) = *mcu;
@@ -59,19 +57,9 @@ impl<'a> Dequantizer<'a> {
 
             let idct = idct?;
             debug_assert_eq!(idct.len(), 3);
-            idcts.push((idct[0], idct[1], idct[2]))
+            dequantized_coefficients.push((idct[0], idct[1], idct[2]))
         }
 
-        Ok(idcts)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_dequantizer() -> Result<()> {
-        Ok(())
+        Ok(dequantized_coefficients)
     }
 }

@@ -1,5 +1,3 @@
-use anyhow::Result;
-
 pub struct BitReader<'a> {
     pub(crate) data: &'a [u8],
     pub(crate) bit_cur: usize,
@@ -34,6 +32,8 @@ impl<'a> BitReader<'a> {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::Result;
+
     use super::*;
 
     #[test]

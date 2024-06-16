@@ -13,6 +13,7 @@ use crate::dequantizer::Dequantizer;
 use crate::entropy_decoder::EntropyDecoder;
 use crate::frame_header::Component;
 use crate::huffman_tree::HuffmanClass;
+use crate::idct::IDCT;
 use crate::marker::{Marker, MarkerType};
 use crate::parser::Parser;
 use crate::sample_precision::SamplePrecision;
@@ -165,7 +166,7 @@ impl Decoder {
         Ok(Parser::new(self.mmap.to_vec(), marlen_map, self.encoding))
     }
 
-    pub fn decode(&mut self) -> Result<()> {
+    pub fn decode(&mut self) -> Result<Vec<(Simd<f32, 64>, Simd<f32, 64>, Simd<f32, 64>)>> {
         let parser = self.setup()?;
 
         let code_schema = self.encoding.schema();
@@ -262,26 +263,37 @@ impl Decoder {
                     quantization_table_map.insert(*component_id, qt_table);
                 }
 
-                println!(
-                    "frame: {:?}\nquantization tables {:?}\nquantization table keys: {:?}",
-                    frame_header.components,
-                    quantization_tables,
-                    quantization_table_map.keys()
-                );
-
                 let mut dequantizer = Dequantizer::new(
                     &frame_header,
                     &mcus,
                     &scan_component_order,
                     quantization_table_map,
                 );
+                let data = dequantizer.dequantize()?;
+                let idct = IDCT::new(precisions[0]);
 
-                dequantizer.dequantize()?;
+                let mut image_data = vec![];
+
+                for block in data {
+                    let (c1, c2, c3) = block;
+
+                    let res = vec![c1, c2, c3]
+                        .par_iter()
+                        .map(|component| {
+                            let component = component.cast::<f32>();
+                            let idct = Simd::from_array(idct.perform_idct(component.to_array()));
+                            let level_shift = Simd::splat(128.0);
+                            idct + level_shift
+                        })
+                        .collect::<Vec<_>>();
+
+                    image_data.push((res[0], res[1], res[2]))
+                }
+
+                Ok(image_data)
             }
             _ => todo!(),
         }
-
-        Ok(())
     }
 }
 

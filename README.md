@@ -1,35 +1,22 @@
-# jpeg
-jpeg is a JFIF codec that implements .jpeg algorithms.
+# jpeg-decoder
 
 <br />
 
 <p align="center">
-    <img src="mike.jpg" alt="Original Mike" width="300"/>
-    <img src="gray_mike.png" alt="Grayscale Mike" width="300"/>
+    <img src="mike.jpg" alt="Original Mike" width="320"/>
+    <img src="gray_mike.png" alt="Grayscale Mike" width="320"/>
 </p>
 
+## Coding Process
 
+The decoder uses baseline sequential as its coding process. Other DCT-based coding process are soon to come!
+See `CODING_PROCESSES.md`.
 
-# Specs
-## Coding process 
-- [x] baseline sequential 
-- [ ] extended DCT-based decoding 
-- [ ] lossless 
+## Vectorization
 
-## Modes of operation
-- [x] sequential DCT-based
-- [ ] progressive DCT-based
-- [ ] lossless
-- [ ] hierarchical
+`jpeg-decoder` makes use of portable simd during various steps of the decoding process - like scanning for markers,
+level changing, grayscaling, and many more.
 
-## Entry coding procedure
-- [x] Huffman tables
-- [ ] Arithmetic coding conditioning tables
+## Resources
 
-
-## SIMD
-jpeg makes use of `std::simd` throughout various steps. For instance, JFIF marker detection and grayscaling use SIMD operations.
-
-
-## ITU-T.81 Specification
-https://www.w3.org/Graphics/JPEG/itu-t81.pdf
+[ITU-T.81 Specification](https://www.w3.org/Graphics/JPEG/itu-t81.pdf)

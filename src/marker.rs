@@ -7,19 +7,6 @@ pub(crate) enum MarkerType {
     StandAlone,
 }
 
-enum Segment {
-    /// A Marker segment consists of a markery followed by a sequence of related parameters.
-    /// The first parameter in a markery segment is the two-byte length parameter.
-    /// This length encodes the number of bytes in the markery segment, including the length
-    /// parameter and excluding the two-byte markery.
-    Marker(usize, usize), // offset, length
-
-    /// Entry-coded data segment contains the output of an entropy-coding procedure. It
-    /// consists of an integer number of bytes, whether the entry-coding procedure used
-    /// is Huffman or arithmetic.
-    EntropyCodedData, // should be a bitstream
-}
-
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash, Eq)]
 pub(crate) enum Marker {
     GLOBAL = 0xFF,

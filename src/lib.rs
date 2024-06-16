@@ -15,6 +15,7 @@ mod dequantizer;
 mod entropy_decoder;
 pub(crate) mod frame_header;
 pub(crate) mod huffman_tree;
+mod idct;
 pub(crate) mod marker;
 pub(crate) mod parser;
 pub(crate) mod quantization_table;
