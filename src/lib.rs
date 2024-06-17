@@ -13,6 +13,7 @@ mod bitreader;
 mod coding;
 mod dequantizer;
 mod entropy_decoder;
+mod format;
 pub(crate) mod frame_header;
 pub(crate) mod huffman_tree;
 mod idct;

@@ -410,7 +410,6 @@ mod tests {
 
     static INIT: Once = Once::new();
 
-    // this contains a mock start of frame and start of scan
     pub(crate) fn setup() {
         INIT.call_once(|| {
             let data = vec![
@@ -454,7 +453,6 @@ mod tests {
             file.write_all(&data).unwrap();
         });
     }
-
     #[test]
     fn test_decoding_various_markers() -> Result<()> {
         setup();
@@ -535,7 +533,6 @@ mod tests {
         assert_eq!(scan_header.end_of_spectral, 63);
         assert_eq!(scan_header.successive_approx_bit_position_high, 1);
         assert_eq!(scan_header.point_transform, 0);
-
         assert_eq!(
             parser.parse_image_data(s_idx)?,
             [0xFF, 0x00, 0xFF, 0xFF, 0x02, 0x04, b'h', 0x02,].to_vec()

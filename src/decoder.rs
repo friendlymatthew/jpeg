@@ -11,6 +11,7 @@ use crate::bitreader::BitReader;
 use crate::coding::{CodingProcess, EntropyCoding};
 use crate::dequantizer::Dequantizer;
 use crate::entropy_decoder::EntropyDecoder;
+use crate::format::Format;
 use crate::frame_header::Component;
 use crate::huffman_tree::HuffmanClass;
 use crate::idct::IDCT;
@@ -166,7 +167,7 @@ impl Decoder {
         Ok(Parser::new(self.mmap.to_vec(), marlen_map, self.encoding))
     }
 
-    pub fn decode(&mut self) -> Result<Vec<(Simd<f32, 64>, Simd<f32, 64>, Simd<f32, 64>)>> {
+    pub fn decode(&mut self) -> Result<Vec<Format>> {
         let parser = self.setup()?;
 
         let code_schema = self.encoding.schema();
@@ -290,7 +291,15 @@ impl Decoder {
                     image_data.push((res[0], res[1], res[2]))
                 }
 
-                Ok(image_data)
+                let mut ycbcrs = vec![];
+
+                for (y, cb, cr) in image_data {
+                    for i in 0..64 {
+                        ycbcrs.push(Format::YCbCr(y[i], cb[i], cr[i]));
+                    }
+                }
+
+                Ok(ycbcrs)
             }
             _ => todo!(),
         }
