@@ -86,14 +86,10 @@ impl Decoder {
                 .filter_map(|low_marker| {
                     let low_marker_mask = Simd::splat(*low_marker as u8);
                     let low_marker_matches = curr_chunk.simd_eq(low_marker_mask);
-                    if !low_marker_matches.any() {
-                        return None;
-                    }
+                    !low_marker_matches.any() && return None;
 
                     let mut marker_matches = high_marker_matches & low_marker_matches;
-                    if !marker_matches.any() {
-                        return None;
-                    }
+                    !marker_matches.any() && return None;
 
                     let mut local_visited_markers = vec![];
                     let mut local_marker_marlen_map = vec![];
