@@ -2,12 +2,6 @@ use std::simd::Simd;
 
 use crate::sample_precision::SamplePrecision;
 
-#[derive(Debug)]
-enum TableType {
-    Luminance = 0,
-    Chrominance = 1,
-}
-
 /// The set of 64 quantization values used to quantize the DCT coefficients
 #[derive(Debug, Copy, Clone)]
 pub struct QuantizationTable {

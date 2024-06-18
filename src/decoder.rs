@@ -264,12 +264,8 @@ impl Decoder {
                     quantization_table_map.insert(*component_id, qt_table);
                 }
 
-                let mut dequantizer = Dequantizer::new(
-                    &frame_header,
-                    &mcus,
-                    &scan_component_order,
-                    quantization_table_map,
-                );
+                let mut dequantizer =
+                    Dequantizer::new(&mcus, &scan_component_order, quantization_table_map);
                 let data = dequantizer.dequantize()?;
                 let idct = IDCT::new(precisions[0]);
 

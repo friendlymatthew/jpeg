@@ -20,16 +20,11 @@ pub(crate) type MarlenMap = HashMap<Marker, Vec<Marlen>>;
 pub(crate) struct Parser {
     buffer: Vec<u8>,
     marlen_map: MarlenMap,
-    encoding: CodingProcess,
 }
 
 impl Parser {
     pub fn new(buffer: Vec<u8>, marlen_map: MarlenMap, encoding: CodingProcess) -> Self {
-        Parser {
-            buffer,
-            marlen_map,
-            encoding,
-        }
+        Parser { buffer, marlen_map }
     }
 
     fn parse_huffman_information(&self) -> Result<([u8; 4], [u8; 4])> {

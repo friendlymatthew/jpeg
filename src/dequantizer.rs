@@ -3,28 +3,22 @@ use std::simd::Simd;
 
 use anyhow::{anyhow, Result};
 
-use crate::frame_header::FrameHeader;
 use crate::quantization_table::QuantizationTable;
 
 pub(crate) struct Dequantizer<'a> {
-    frame_header: &'a FrameHeader,
     data: &'a Vec<([u8; 64], [u8; 64], [u8; 64])>,
-    cursor: usize,
     scan_component_order: &'a Vec<u8>,
     quantization_table_map: HashMap<u8, QuantizationTable>,
 }
 
 impl<'a> Dequantizer<'a> {
     pub(crate) fn new(
-        frame_header: &'a FrameHeader,
         data: &'a Vec<([u8; 64], [u8; 64], [u8; 64])>,
         scan_component_order: &'a Vec<u8>,
         quantization_table_map: HashMap<u8, QuantizationTable>,
     ) -> Self {
         Dequantizer {
-            frame_header,
             data,
-            cursor: 0,
             scan_component_order,
             quantization_table_map,
         }

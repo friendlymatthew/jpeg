@@ -10,7 +10,6 @@ pub(crate) enum MarkerType {
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash, Eq)]
 pub(crate) enum Marker {
     GLOBAL = 0xFF,
-    STUFF = 0x00,
 
     /// Start of Frame markers, non-differential, Huffman coding
     /// Baseline DCT
@@ -402,13 +401,6 @@ impl Marker {
         ])
     }
 
-    pub fn is_invalid_low_byte(&self) -> bool {
-        match self {
-            Marker::GLOBAL | Marker::STUFF => true,
-            _ => false,
-        }
-    }
-
     pub fn singleton(&self) -> bool {
         match self {
             Marker::DHT => false,
@@ -446,9 +438,5 @@ impl Marker {
             ),
             _ => unreachable!(),
         }
-    }
-
-    pub fn to_u16(&self) -> u16 {
-        u16::from_be_bytes([Marker::GLOBAL as u8, *self as u8])
     }
 }

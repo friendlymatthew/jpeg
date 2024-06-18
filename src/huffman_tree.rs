@@ -75,14 +75,6 @@ impl HuffmanNode {
             right: None,
         }
     }
-
-    pub(crate) fn is_leaf(ptr: NPtr) -> bool {
-        if let Some(node) = ptr {
-            unsafe { (*node.as_ptr()).code != u8::MAX }
-        } else {
-            unreachable!()
-        }
-    }
 }
 
 pub(crate) type NPtr = Option<NonNull<HuffmanNode>>;
@@ -173,8 +165,9 @@ impl Drop for HuffmanTree {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use anyhow::Result;
+
+    use super::*;
 
     #[test]
     fn test_tree_construction() -> Result<()> {
@@ -185,7 +178,6 @@ mod tests {
         assert!(tree.root.is_some());
         let tree = tree.root.unwrap();
 
-        assert!(!HuffmanNode::is_leaf(Some(tree)));
         assert!(unsafe { (*tree.as_ptr()).left.is_some() });
         assert!(unsafe { (*tree.as_ptr()).right.is_some() });
 
