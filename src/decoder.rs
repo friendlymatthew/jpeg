@@ -9,7 +9,7 @@ use rayon::iter::ParallelIterator;
 
 use crate::bitreader::BitReader;
 use crate::coding::{CodingProcess, EntropyCoding};
-use crate::color_spaces::{ColorSpace, MCU};
+use crate::color_spaces::MCU;
 use crate::dequantizer::Dequantizer;
 use crate::entropy_decoder::EntropyDecoder;
 use crate::frame_header::Component;
@@ -45,7 +45,7 @@ impl Decoder {
         Decoder::from_file(file)
     }
 
-    pub fn decode(&mut self) -> Result<Vec<ColorSpace>> {
+    pub fn decode(&mut self) -> Result<Vec<MCU>> {
         let parser = self.setup()?;
 
         let code_schema = self.encoding.schema();
