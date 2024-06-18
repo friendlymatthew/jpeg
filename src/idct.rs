@@ -31,6 +31,7 @@ impl IDCT {
         }
     }
 
+    /// todo refactor this!
     pub(crate) fn perform_idct(&self, mcu: [f32; 64]) -> [f32; 64] {
         let mut output = [0f32; 64];
 

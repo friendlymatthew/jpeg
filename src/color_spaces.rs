@@ -2,7 +2,7 @@ use std::simd::Simd;
 
 use crate::color_spaces::ColorSpace::RGB;
 
-type MCU = (Simd<f32, 64>, Simd<f32, 64>, Simd<f32, 64>);
+pub(crate) type MCU = (Simd<f32, 64>, Simd<f32, 64>, Simd<f32, 64>);
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum ColorSpace {
