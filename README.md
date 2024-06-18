@@ -14,8 +14,16 @@ See `CODING_PROCESSES.md`.
 
 ## Vectorization
 
-`jpeg-decoder` makes use of portable simd during various steps of the decoding process - like scanning for markers,
-level changing, grayscaling, and many more.
+`jpeg-decoder` makes use of portable simd during various steps of the decoding process.
+
+### Consider dequantization:
+
+<img src="dequantization.png" width ="400" align="center"/>
+
+This is very SIMD, simply cast the quantization tables and the coefficients as `Simd<u8; 64>` and perform a
+lane-multiplication.
+
+Other trivial use cases exist like level-shifting and marker segment parsing.
 
 ## Resources
 
