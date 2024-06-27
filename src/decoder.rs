@@ -200,7 +200,7 @@ impl Decoder {
             let high_marker_matches = curr_chunk.simd_eq(high_marker_mask);
             if !high_marker_matches.any() {
                 temp_chunk = [0u8; Self::LANE_COUNT];
-                self.cursor += Self::LANE_COUNT;
+                self.cursor += Self::LANE_COUNT - 1;
 
                 continue;
             }
@@ -276,7 +276,7 @@ impl Decoder {
             }
 
             temp_chunk = [0u8; Self::LANE_COUNT];
-            self.cursor += Self::LANE_COUNT;
+            self.cursor += Self::LANE_COUNT - 1;
         }
 
         Ok(marker_marlen_map)
