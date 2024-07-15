@@ -4,8 +4,8 @@ A decoder following the [ITU-T.81 Specification](https://www.w3.org/Graphics/JPE
 <br />
 
 <p align="center">
-    <img src="mike.jpg" alt="Original Mike" width="320"/>
-    <img src="gray_mike.png" alt="Grayscale Mike" width="320"/>
+    <img src="decode/mike.jpg" alt="Original Mike" width="320"/>
+    <img src="decode/gray_mike.png" alt="Grayscale Mike" width="320"/>
 </p>
 
 ```rust
@@ -35,7 +35,7 @@ For other coding processes, see `CODING_PROCESSES.md`.
 `jpeg` makes use of portable SIMD throughout various steps of the decoding process, as well as color space conversion
 and grayscaling. For example, consider dequantization:
 
-<img src="dequantization.png" width ="400" align="center"/>
+<img src="decode/dequantization.png" width ="400" align="center"/>
 
 This can be easily vectorized, simply cast the quantization table and coefficients into `Simd<u8, 64>` and perform a
 lane-multiplication with each other.

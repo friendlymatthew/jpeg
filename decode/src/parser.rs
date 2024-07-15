@@ -363,6 +363,7 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
     use std::fs::{File, OpenOptions};
     use std::io::Write;
     use std::sync::Once;
@@ -443,7 +444,7 @@ mod tests {
                 .write(true)
                 .create(true)
                 .truncate(true)
-                .open("mock_jpeg_decode.bin")
+                .open("../../mock_jpeg_decode.bin")
                 .unwrap();
             file.write_all(&data).unwrap();
         });
@@ -452,7 +453,7 @@ mod tests {
     fn test_decoding_various_markers() -> Result<()> {
         setup();
 
-        let file = File::open("mock_jpeg_decode.bin")?;
+        let file = File::open("../../mock_jpeg_decode.bin")?;
         let mmap = unsafe { Mmap::map(&file)? };
 
         let mut decoder = Decoder {
